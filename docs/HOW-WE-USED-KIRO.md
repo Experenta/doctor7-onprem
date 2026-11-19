@@ -25,7 +25,7 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## Tasks, contracts, and checks
 
-- 29 tasks were given to Kiro agents: K-01 to K-29 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task had a
+- 31 tasks were given to Kiro agents: K-01 to K-31 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task had a
   written contract with an objective, the files it may change, what is out of scope, an
   acceptance criterion, and a verification command. (Source: `KIRO-USO.md`, Tasks.)
 - Each task had its own branch and one commit. The project director checked the task
@@ -41,12 +41,12 @@ checked. Each claim names its source. Three kinds of source appear:
   specification has three files: `requirements.md`, `design.md`, and `tasks.md`. The task
   was then implemented against that specification. (Source: `KIRO-USO.md`, Specifications;
   folder `.kiro/specs/`.)
-- The repository holds specifications for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, and k-29. There is no folder for K-11, K-15, K-25, and K-27. (Source: folder `.kiro/specs/`.)
+- The repository holds specifications for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, k-29, k-30, and k-31. There is no folder for K-11, K-15, K-25, and K-27. (Source: folder `.kiro/specs/`.)
 
 ## Steering
 
 - Four steering files are in `.kiro/steering/`: `product.md`, `tech.md`, `structure.md`
-  (from K-01), and `frontend-design.md` (from K-08). The frontend file summarizes the
+  (from K-01), and `frontend-design.md` (from K-08, rewritten as version 2 in K-30). The frontend file summarizes the
   design rules that the frontend follows. (Source: `KIRO-USO.md`, Steering; folder
   `.kiro/steering/`.)
 
@@ -103,6 +103,8 @@ checked. Each claim names its source. Three kinds of source appear:
    (Source: `api/migrations/0005_meetings.sql`, `api/src/video/meeting.store.http.test.js`.)
 7. **K-26, duplicate session cookie.** On the deployed demo, a browser that still held an old session cookie with another Path sent two cookies of the same name and the new session was hidden; K-26 makes the API try every value, and a real browser run on the deployed demo confirmed the sign-in, the stored meeting and the chat history for professional and client. (Source: commit `5c983ca`; `docs/SECURITY.md`, Session cookie.)
 8. **K-29, video frame 404.** A real-browser run on the deployed demo showed a 404 in the video frame: the generated room names contained a hyphen, which the default Jitsi Apache rule rejects. K-29 makes new room names alphanumeric. No static test could have found this. (Source: `.kiro/specs/k-29/requirements.md`; `api/src/video/jitsi.js`.)
+9. **K-30, brief colors that fail small text.** Computing the contrast of the palette of the design brief showed that turquoise 700 gives about 4:1 on white, and that magenta 600 on its pale surface falls under 4.5:1. K-30 adds a darker turquoise and a darker magenta for small text, and a contrast test covers both. The same task found that the filter chip and the status chip share the word "Scheduled", so one existing test that looked the word up on the whole page was limited to the table. (Source: `.kiro/specs/k-30/design.md`; `web/src/styles/design.test.js`; `web/src/pages/Appointments.test.jsx`.)
+10. **K-31, a filter that changed and tests that were wrong.** The audit outcome filter changed from a select with an Apply button to chips that apply at once, so the one test that chose a select option was rewritten and tests for the chips were added. On the first run of the web tests, two of the new duration-chip tests failed because the tests were wrong, not the code: a 90-minute length is itself one of the chips, and a duration that was refused at one start cannot be accepted later at the same start. A third new test failed because the session check also has the `status` role, so it looked up the wrong element. The three tests were corrected. (Source: `.kiro/specs/k-31/design.md`; `web/src/pages/Audit.test.jsx`; `web/src/pages/Appointments.test.jsx`; `web/src/pages/Consultation.test.jsx`.)
 
 ## Size of the work
 
@@ -116,5 +118,9 @@ checked. Each claim names its source. Three kinds of source appear:
 - Google Meet. The demo uses a simulator in `tools/mock-google/`, not the real service.
   (`docs/VIDEO.md`.)
 - The Kiro hooks in the IDE. See the Hooks section.
+- The look of the redesigned web client in a real browser at 360, 768, and 1440 px. K-30 and K-31 were
+  checked with tests of the tokens, the contrast values, and the structure, not by looking at
+  the screens. The sign-in page of the mock identity provider was checked the same way. (Source:
+  `.kiro/specs/k-30/design.md` and `.kiro/specs/k-31/design.md`, Not verified here.)
 - The checks that the specifications left for the project manager on a Debian host. See
   item 5 above.

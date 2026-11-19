@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatTime } from '../lib/format.js';
-import { SendIcon } from './icons.jsx';
+import { AlertIcon, RefreshIcon, SendIcon } from './icons.jsx';
+import { Avatar } from './ui.jsx';
 
 const MAX_BODY_BYTES = 2000;
 
@@ -103,14 +104,25 @@ export default function ChatPanel({ appointmentId, userId }) {
   }[connection];
 
   return (
-    <section className="panel" aria-labelledby="chat-title">
-      <h2 id="chat-title">Chat</h2>
-      <p className="muted" role="status">
-        {statusText}
-      </p>
+    <section className="card chat-card" aria-labelledby="chat-title">
+      <div className="card-head">
+        <h2 id="chat-title">Chat</h2>
+      </div>
+      <div className="chat-status">
+        <span className={`conn-dot conn-${connection}`} aria-hidden="true" />
+        <p className="chat-status-text" role="status">
+          {statusText}
+        </p>
+        {canReconnect && (
+          <button type="button" className="btn btn-secondary" onClick={() => setAttempt((n) => n + 1)}>
+            <RefreshIcon />
+            Reconnect to chat
+          </button>
+        )}
+      </div>
 
       {messages.length === 0 && connection === 'open' && (
-        <p>No messages yet. Write the first message below.</p>
+        <p className="chat-empty">No messages yet. Write the first message below.</p>
       )}
 
       <ol className="chat-log" role="log" aria-live="polite" aria-label="Chat messages" ref={logRef}>
@@ -118,10 +130,13 @@ export default function ChatPanel({ appointmentId, userId }) {
           const own = message.senderId === userId;
           return (
             <li key={message.id} className={own ? 'chat-item chat-item-own' : 'chat-item'}>
-              <span className="chat-meta">
-                {own ? 'You' : 'Other participant'}, {formatTime(message.sentAt)}
-              </span>
-              {message.body}
+              <Avatar name={message.senderId} size="sm" tone={own ? 'purple' : 'turquoise'} />
+              <div className="chat-bubble">
+                <span className="chat-meta">
+                  {own ? 'You' : 'Other participant'}, {formatTime(message.sentAt)}
+                </span>
+                <span className="chat-text">{message.body}</span>
+              </div>
             </li>
           );
         })}
@@ -129,14 +144,9 @@ export default function ChatPanel({ appointmentId, userId }) {
 
       {notice && (
         <div className="alert" role="alert">
+          <AlertIcon />
           <p>{notice}</p>
         </div>
-      )}
-
-      {canReconnect && (
-        <button type="button" className="btn btn-secondary" onClick={() => setAttempt((n) => n + 1)}>
-          Reconnect to chat
-        </button>
       )}
 
       <form className="chat-form" onSubmit={send}>

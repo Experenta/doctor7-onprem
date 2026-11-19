@@ -1,50 +1,61 @@
-/* Doctor7 theme tokens. Every color in the app comes from this file. */
+/* Doctor7 theme tokens. Every color of the app is defined once, in this file. */
 :root {
-  /* Brief palette */
-  --color-heading: #5e60ce;
-  --color-primary: #7400b8;
-  --color-primary-border: #bca5eb;
-  --color-secondary: #9278c5;
-  --color-secondary-surface: #7f45d9;
-  --color-now: #7a5cff;
+  /* Purple: structure */
+  --color-purple-950: #1E0F52;
+  --color-purple-900: #2A1466;
+  --color-purple-700: #482494;
+  --color-purple-500: #6E4FC9;
+  --color-purple-100: #ECE7F8;
+  --color-purple-50: #F6F4FC;
 
-  --gradient-main: linear-gradient(49deg, #7400b8 33%, #33bfe9 100%);
-  --gradient-button: linear-gradient(90deg, #8161f3, #4da4ff);
+  /* Turquoise: light (active states, indicators, data) */
+  --color-turquoise-500: #18E4DC;
+  --color-turquoise-700: #0A8E88;
+  --color-turquoise-100: #DDFBF9;
+  --color-on-turquoise: #0B2A28;
 
-  --stat-1: linear-gradient(135deg, #fe69a5, #ff875e);
-  --stat-2: linear-gradient(135deg, #5e72e4, #8e70ee);
-  --stat-3: linear-gradient(135deg, #119bd2, #3ad0bf);
-  --stat-4: linear-gradient(135deg, #8362f7, #ee70e9);
+  /* Magenta: the single spark */
+  --color-magenta-600: #D800B0;
+  --color-magenta-100: #FBE1F6;
 
-  /* Neutrals tinted toward the primary hue */
-  --color-ink: #1d1a33;
-  --color-ink-muted: #54507a;
-  --color-bg: #f7f5fd;
-  --color-surface: #ffffff;
-  --color-surface-muted: #ece8f8;
-  --color-line: #ddd5f1;
+  /* Neutrals */
+  --color-ink: #1B1535;
+  --color-ink-muted: #5C5778;
+  --color-line: #E4DFF2;
+  --color-white: #FFFFFF;
 
-  /* Text on the primary surface */
-  --color-on-primary: #ffffff;
-  --color-on-primary-muted: #ead9f8;
+  /* Derived tokens. The brief colors cannot carry small text at 4.5:1, so these
+     three exist, and the contrast test covers each one. */
+  --color-turquoise-800: #07706B;
+  --color-magenta-800: #9C0081;
+  --color-on-dark-muted: #CFC5EE;
 
-  /* Icons on the stat tiles need 3:1 against every stop of the four pairs.
-     White fails on the pink pair, so the tiles use the dark ink. */
-  --color-on-stat: #1d1a33;
+  /* Roles */
+  --color-bg: var(--color-purple-50);
+  --color-surface: var(--color-white);
+  --color-surface-muted: var(--color-purple-100);
+  --color-primary: var(--color-purple-700);
+  --color-primary-hover: var(--color-purple-900);
+  --color-heading: var(--color-purple-900);
+  --color-control-border: var(--color-purple-500);
+  --color-focus: var(--color-purple-500);
+  --color-focus-on-dark: var(--color-turquoise-500);
+  --color-danger-text: var(--color-magenta-800);
+  --color-danger-surface: var(--color-magenta-100);
+  --color-danger-mark: var(--color-magenta-600);
+  --color-success-text: var(--color-turquoise-800);
+  --color-success-surface: var(--color-turquoise-100);
+  --color-on-primary: var(--color-white);
+  --color-on-gradient: var(--color-white);
+  --color-selection-bg: var(--color-purple-100);
+  --color-selection-text: var(--color-ink);
+  --color-shadow: rgba(30, 15, 82, 0.12);
+  --color-shadow-strong: rgba(30, 15, 82, 0.2);
+  --color-shimmer: rgba(255, 255, 255, 0.7);
 
-  /* State colors */
-  --color-danger: #a3123a;
-  --color-danger-surface: #fdecf1;
-  --color-danger-border: #e6a3b8;
-  --color-success: #0b6b4f;
-  --color-success-surface: #e6f6f0;
-  --color-success-border: #98d4be;
+  --gradient-brand: linear-gradient(135deg, var(--color-purple-700), var(--color-magenta-600));
 
-  --color-selection-bg: #d9c8f5;
-  --color-selection-text: #1d1a33;
-  --color-focus: #7a5cff;
-
-  /* Type: fixed rem scale, ratio 1.2 */
+  /* Type: Montserrat for titles and figures, Lato for text. Fixed rem scale, ratio 1.2. */
   --font-body: 'Lato', sans-serif;
   --font-heading: 'Montserrat', sans-serif;
   --text-sm: 0.833rem;
@@ -52,19 +63,26 @@
   --text-md: 1.2rem;
   --text-lg: 1.44rem;
   --text-xl: 1.728rem;
+  --text-2xl: 2.074rem;
+  --text-3xl: 2.488rem;
   --measure: 70ch;
 
-  /* Space, shape, shadow, motion */
+  /* Space */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-5: 1.5rem;
   --space-6: 2rem;
-  --radius: 10px;
-  --radius-sm: 6px;
-  --shadow-soft: 0 2px 12px rgba(29, 26, 51, 0.1);
-  --shadow-raised: 0 4px 16px rgba(29, 26, 51, 0.14);
-  --motion: 200ms;
+  --space-7: 3rem;
+
+  /* Shape, depth, motion */
+  --radius-card: 16px;
+  --radius-control: 12px;
+  --radius-pill: 999px;
+  --shadow-soft: 0 2px 12px var(--color-shadow);
+  --shadow-raised: 0 8px 24px var(--color-shadow-strong);
+  --motion: 180ms;
   --target: 2.75rem;
+  --sidebar-width: 16.5rem;
 }

@@ -12,7 +12,7 @@ export function Shell() {
   if (status === 'loading') {
     return (
       <main className="app-main">
-        <Skeleton label="Checking your session" />
+        <Skeleton label="Checking your session" variant="home" />
       </main>
     );
   }

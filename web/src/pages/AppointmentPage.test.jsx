@@ -244,4 +244,133 @@ describe('Chat', () => {
     expect(await screen.findByText(/The chat is closed because this appointment is cancelled/)).toBeInTheDocument();
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
+
+  it('shows the messages as bubbles with initials, the own ones on the other side', async () => {
+    const ws = await openChat();
+    frame(ws, { type: 'history', items: [message('m1', 'u-luis', 'Hello from the client'), message('m2', 'u-ana', 'Reply from me')] });
+    const [theirs, own] = within(screen.getByRole('log', { name: 'Chat messages' })).getAllByRole('listitem');
+    expect(theirs).toHaveClass('chat-item');
+    expect(theirs).not.toHaveClass('chat-item-own');
+    expect(within(theirs).getByText('LU')).toHaveClass('avatar');
+    expect(own).toHaveClass('chat-item-own');
+    expect(within(own).getByText('AN')).toHaveClass('avatar');
+  });
+
+  it('marks the connection: connecting, connected, and closed', async () => {
+    const { container } = page();
+    await screen.findByRole('heading', { name: 'Chat' });
+    const dot = () => container.querySelector('.chat-status-text').previousElementSibling;
+    expect(dot()).toHaveClass('conn-connecting');
+    await waitForSockets(1);
+    act(() => socket().onopen());
+    expect(dot()).toHaveClass('conn-open');
+    act(() => socket().onclose({ code: 1006 }));
+    expect(dot()).toHaveClass('conn-closed');
+    expect(dot()).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('keeps the reconnect button beside the status of a dropped chat', async () => {
+    const ws = await openChat();
+    act(() => ws.onclose({ code: 1006 }));
+    const status = screen.getByRole('status');
+    expect(status.parentElement).toHaveClass('chat-status');
+    expect(status.parentElement).toContainElement(screen.getByRole('button', { name: 'Reconnect to chat' }));
+  });
+});
+
+describe('Appointment screen structure', () => {
+  it('shows the participants with their initials, and the status as a chip', async () => {
+    page();
+    const head = (await screen.findByRole('heading', { name: 'Appointment' })).closest('header');
+    expect(within(head).getByText('u-ana')).toBeInTheDocument();
+    expect(within(head).getByText('u-luis')).toBeInTheDocument();
+    expect(within(head).getByText('AN')).toBeInTheDocument();
+    expect(within(head).getByText('LU')).toBeInTheDocument();
+    expect(within(head).getByText('Scheduled')).toHaveClass('chip-teal');
+    expect(within(head).getByText(/Dec 2, 2026, 5:50\sAM\sGMT-5/)).toBeInTheDocument();
+  });
+
+  it('puts the actions in the head', async () => {
+    page();
+    const head = (await screen.findByRole('heading', { name: 'Appointment' })).closest('header');
+    expect(within(head).getByRole('link', { name: 'Back to appointments' })).toHaveAttribute('href', '/appointments');
+    expect(within(head).getByRole('link', { name: 'Write consultation' })).toBeInTheDocument();
+  });
+
+  it('puts the video first and the chat after it, in one workspace', async () => {
+    page();
+    const video = await screen.findByRole('heading', { name: 'Video consultation' });
+    const chat = await screen.findByRole('heading', { name: 'Chat' });
+    const workspace = video.closest('.appt-workspace');
+    expect(workspace).toContainElement(chat);
+    expect(video.compareDocumentPosition(chat) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps the closed chat in the same place for an appointment that is not scheduled', async () => {
+    page({ 'GET /appointments/a1': ok(appointment({ status: 'cancelled' })) });
+    const head = (await screen.findByRole('heading', { name: 'Appointment' })).closest('header');
+    expect(within(head).getByText('Cancelled')).toHaveClass('chip-neutral');
+    const chat = await screen.findByRole('heading', { name: 'Chat' });
+    expect(chat.closest('.appt-workspace')).not.toBeNull();
+  });
+
+  it('shows only the head to an administrator, without a video or a chat', async () => {
+    const { container } = page({}, 'admin');
+    await screen.findByRole('heading', { name: 'Appointment' });
+    expect(container.querySelector('.appt-workspace')).toBeNull();
+    expect(screen.getByText('Scheduled')).toBeInTheDocument();
+  });
+
+  it('shows a skeleton of its own shape while the appointment loads', async () => {
+    const { container } = renderApp('/appointments/a1', { 'GET /appointments/a1': never });
+    await screen.findByText('Loading');
+    expect(container.querySelector('.skeleton-appointment')).not.toBeNull();
+  });
+});
+
+describe('Video presentation', () => {
+  const chips = (container) => [...container.querySelectorAll('.card-head-chips .chip')].map((chip) => chip.textContent);
+
+  it('names the provider and the state of the room once the room is ready', async () => {
+    const { container } = page({ 'GET /appointments/a1/meeting': ok({ provider: 'jitsi', url: videoUrl('jitsi.example.test', '/room') }) });
+    await screen.findByTitle('Video consultation');
+    expect(chips(container)).toEqual(['Jitsi', 'Room ready']);
+  });
+
+  it('names Google Meet when the API reports it', async () => {
+    const { container } = page({ 'GET /appointments/a1/meeting': ok({ provider: 'meet', url: videoUrl('meet.example.test', '/abc') }) });
+    await screen.findByRole('link', { name: 'Open Google Meet in a new tab' });
+    expect(chips(container)).toEqual(['Google Meet', 'Room ready']);
+  });
+
+  it('says "Not started" to the professional and "Waiting" to the client', async () => {
+    const first = page();
+    await screen.findByRole('button', { name: 'Start video meeting' });
+    expect(chips(first.container)).toEqual(['Not started']);
+    first.unmount();
+    const second = page({}, 'client');
+    await screen.findByText(/Your professional has not started the meeting yet/);
+    expect(chips(second.container)).toEqual(['Waiting']);
+  });
+
+  it('says "Problem" when the meeting cannot be read', async () => {
+    const { container } = page({ 'GET /appointments/a1/meeting': fail(500, 'internal_error', 'x') });
+    await screen.findByRole('alert');
+    expect(chips(container)).toEqual(['Problem']);
+  });
+
+  it('puts the frame in a stage that keeps the 16:9 box, and the other states in the same stage', async () => {
+    const { container } = page({ 'GET /appointments/a1/meeting': ok({ provider: 'jitsi', url: videoUrl('jitsi.example.test', '/room') }) });
+    const frame = await screen.findByTitle('Video consultation');
+    expect(frame).toHaveClass('video-frame');
+    expect(frame.parentElement).toHaveClass('video-stage', 'is-live');
+    expect(container.querySelectorAll('.video-stage')).toHaveLength(1);
+  });
+
+  it('shows the start button on the stage with the white button of dark surfaces', async () => {
+    page();
+    const button = await screen.findByRole('button', { name: 'Start video meeting' });
+    expect(button).toHaveClass('btn-on-band');
+    expect(button.closest('.video-stage')).not.toBeNull();
+  });
 });
