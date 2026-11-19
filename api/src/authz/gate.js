@@ -15,6 +15,10 @@ const ROUTE_RULES = Object.freeze([
   // Creating a meeting changes the appointment, so it uses the update action.
   // The handler also requires the caller to be the professional of the appointment.
   { method: 'POST', path: '/appointments/:id/meeting', resource: 'appointment', action: 'update' },
+  // Reading the meeting is open to every role at the gate on purpose. The matrix gives
+  // a cell to the professional and the client only, and the handler answers 404 to every
+  // other caller, so an administrator or an auditor cannot tell a meeting from none.
+  { method: 'GET', path: '/appointments/:id/meeting', resource: 'meeting', action: 'read', anyRole: true },
   { method: 'GET', path: '/consultations/:id', resource: 'consultation', action: 'read' },
   { method: 'GET', path: '/audit', resource: 'audit', action: 'read' },
 ]);
@@ -24,11 +28,15 @@ const ID_MAX_LENGTH = 64;
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH']);
 
 // Turns rules into { method, segments, roles } and refuses a rule that would
-// let every role through (an empty role list means "any role" to requireSession).
+// let every role through by accident (an empty role list means "any role" to
+// requireSession). A rule that sets `anyRole` admits every role on purpose. Its
+// resource and action must still exist in the matrix, and the handler must check
+// the object with `can`.
 function compileRules(rules) {
   return rules.map((rule) => {
-    const roles = rolesFor(rule.resource, rule.action);
-    if (roles.length === 0 || roles.some((role) => !ROLES.includes(role))) {
+    const matrixRoles = rolesFor(rule.resource, rule.action);
+    const roles = rule.anyRole === true ? [...ROLES] : matrixRoles;
+    if (matrixRoles.length === 0 || roles.some((role) => !ROLES.includes(role))) {
       throw new TypeError(`Rule ${rule.method} ${rule.path} has no role in the matrix.`);
     }
     return { method: rule.method, segments: rule.path.split('/'), roles, resource: rule.resource, action: rule.action };

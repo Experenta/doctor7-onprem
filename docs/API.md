@@ -44,7 +44,8 @@ appointment and consultation endpoints exist. The access rules are in
 | GET | `/appointments` | `professional`, `client`, `admin` | Lists the appointments the caller may read. |
 | GET | `/appointments/:id` | `professional`, `client`, `admin` | Reads one appointment. |
 | POST | `/appointments` | `professional`, `admin` | Creates an appointment in the caller's center. |
-| POST | `/appointments/:id/meeting` | `professional` of the appointment | Creates the video meeting of an appointment. See `docs/VIDEO.md`. |
+| POST | `/appointments/:id/meeting` | `professional` of the appointment | Creates the video meeting of an appointment, or returns the one that exists. See `docs/VIDEO.md`. |
+| GET | `/appointments/:id/meeting` | `professional` and `client` of the appointment | Reads the stored video meeting of an appointment. See `docs/VIDEO.md`. |
 | POST | `/consultations` | `professional` | Creates a consultation for an appointment of the caller. |
 | GET | `/consultations/:id` | `professional`, `client`, `admin` | Reads one consultation. |
 | GET (WebSocket upgrade) | `/ws?appointment=<id>` | `professional` and `client` of the appointment | Live chat of one appointment. See the Chat section. |
@@ -328,10 +329,12 @@ sends the request to a route that does not admit their role, so they also get
 
 ### POST /appointments/:id/meeting
 
-Roles: the `professional` of the appointment. The server creates the meeting with
-the provider set by `VIDEO_PROVIDER` (`meet` or `jitsi`). The request takes no body
-fields, but it must be sent with `Content-Type: application/json`. The client does
-not choose the provider.
+Roles: the `professional` of the appointment. The call is idempotent. An appointment
+has at most one meeting. The first call creates it with the provider set by
+`VIDEO_PROVIDER` (`meet` or `jitsi`), stores it, and answers `201`. Every later call
+answers `200` with the stored `provider` and `url`, creates no room, and calls no
+provider. The request takes no body fields, but it must be sent with
+`Content-Type: application/json`. The client does not choose the provider.
 
 ```sh
 curl -i -X POST http://127.0.0.1:3000/appointments/5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f/meeting \
@@ -340,7 +343,8 @@ curl -i -X POST http://127.0.0.1:3000/appointments/5b0f6c9e-2d1a-4a56-9d0e-0a1b2
   -d '{}'
 ```
 
-Response `201`, with `Cache-Control: no-store`:
+Response `201` (first call) or `200` (the meeting already exists), with
+`Cache-Control: no-store`:
 
 ```json
 {"provider":"jitsi","url":"https://jitsi.example.test/doctor7-0f1e2d3c4b5a69788796a5b4c3d2e1f0"}
@@ -350,14 +354,40 @@ Response `201`, with `Cache-Control: no-store`:
 `VIDEO_PROVIDER` is `jitsi`, and also when it is `meet` but Meet failed (error,
 time limit, or quota). The failover is recorded in the audit log. A `meet` URL
 opens in a separate tab. A `jitsi` URL may be embedded. The URL can contain a
-token, so treat it as private. See `docs/VIDEO.md`.
+token, so treat it as private. Two simultaneous first calls store one meeting: the
+call that loses the race answers `200` with the stored meeting. See `docs/VIDEO.md`.
 
 Errors: `400 invalid_request` when the body has fields. `404 not_found` when the
 appointment does not exist or the caller may not read it, with the same body for
 both cases. `403 forbidden` for a caller who may read the appointment but may not
 create its meeting (an administrator of the center, who is not a participant), and
-for the roles `client` and `auditor`. `503 video_not_configured` when
-`VIDEO_PROVIDER` is not set.
+for the roles `client` and `auditor`. `409 appointment_closed` when the appointment is
+`cancelled` or `completed`. Nothing is created. `503 video_not_configured` when
+`VIDEO_PROVIDER` is not set and the appointment has no meeting yet.
+
+### GET /appointments/:id/meeting
+
+Roles: the `professional` and the `client` of the appointment.
+
+```sh
+curl -i http://127.0.0.1:3000/appointments/5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f/meeting \
+  -b 'd7_session=<token>'
+```
+
+Response `200`, with `Cache-Control: no-store`, the same body as the `POST`:
+
+```json
+{"provider":"jitsi","url":"https://jitsi.example.test/doctor7-0f1e2d3c4b5a69788796a5b4c3d2e1f0"}
+```
+
+This is how the client enters the room that the professional started.
+
+Errors: `404 no_meeting` when the appointment has no meeting yet. `404 not_found`
+when the appointment does not exist or the caller may not read it, with the same
+body for both cases. An `admin` and an `auditor` get this `404` too, because they do
+not take part in the appointment. `401` without a session. Every successful read is
+written to the audit log as `meeting.read`. A read that finds no meeting is not
+written, because the client asks again every 15 seconds.
 
 ### GET /consultations/:id
 
@@ -536,6 +566,8 @@ the number of deleted messages. See `docs/AUDIT.md`.
 | 403 | `access_denied` | The verified email has no account in `users`. |
 | 403 | `forbidden` | The signed-in role or account may not use this resource, or the route has no rule. |
 | 404 | `not_found` | No route matches the path, or the record does not exist or is not readable by the caller. |
+| 404 | `no_meeting` | The appointment is readable but has no video meeting yet. Only `GET /appointments/:id/meeting` answers it. |
+| 409 | `appointment_closed` | The appointment is `cancelled` or `completed`, so a meeting cannot be started. Only `POST /appointments/:id/meeting` answers it. |
 | 410 | `appointment_closed` | The appointment is not `scheduled`, so its chat is closed. Only the chat handshake answers it. |
 | 413 | `payload_too_large` | The request body is larger than 100 KB. |
 | 415 | `unsupported_media_type` | A `POST`, `PUT`, or `PATCH` to a protected route was not sent as `application/json`. |

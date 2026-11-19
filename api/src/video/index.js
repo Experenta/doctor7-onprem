@@ -5,12 +5,14 @@ const { createJitsiProvider } = require('./jitsi');
 const { createMeetProvider } = require('./meet');
 const { createMeetingService } = require('./service');
 const { createVideoRouter } = require('./router');
+const { createSqlMeetingStore } = require('./store');
 const { loadVideoConfig } = require('./config');
 
 // Builds the meeting router from a loaded video config (see config.js). With no
-// provider configured, the route answers 503. `store` replaces the SQL care
-// store and `audit` is required. `now` and `fetchImpl` can be replaced in tests.
-function createVideo({ db, store, audit, config, logger, now, fetchImpl }) {
+// provider configured, a POST answers 503 unless the meeting already exists. `store`
+// replaces the SQL care store, `meetingStore` replaces the SQL meeting store, and
+// `audit` is required. `now` and `fetchImpl` can be replaced in tests.
+function createVideo({ db, store, meetingStore, audit, config, logger, now, fetchImpl }) {
   if (!config) {
     throw new TypeError('createVideo requires a video config.');
   }
@@ -22,7 +24,16 @@ function createVideo({ db, store, audit, config, logger, now, fetchImpl }) {
     }
     service = createMeetingService({ selected: config.provider, providers });
   }
-  return { router: createVideoRouter({ store: store || createSqlCareStore(db), audit, service, logger }) };
+  return {
+    router: createVideoRouter({
+      store: store || createSqlCareStore(db),
+      meetings: meetingStore || createSqlMeetingStore(db),
+      audit,
+      service,
+      logger,
+      now,
+    }),
+  };
 }
 
 module.exports = { createVideo, loadVideoConfig };

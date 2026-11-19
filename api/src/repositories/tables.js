@@ -32,6 +32,11 @@ const TABLE_SPECS = [
     columns: ['id', 'appointment_id', 'sender_id', 'body', 'sent_at'],
   },
   {
+    table: 'meetings',
+    columns: ['appointment_id', 'provider', 'url', 'created_by', 'created_at'],
+    primaryKey: 'appointment_id',
+  },
+  {
     table: 'audit_log',
     columns: [
       'id',

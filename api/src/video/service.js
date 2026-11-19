@@ -5,8 +5,9 @@ const { VideoProviderError, assertVideoProvider } = require('./provider');
 // Chooses the provider and runs the failover. `selected` is the configured
 // provider name. `providers` maps names to VideoProvider objects. With selected
 // `meet`, a Meet failure creates the meeting in Jitsi. The decision is made per
-// call, and nothing is remembered, so meetings that exist stay where they are
-// and the next call tries Meet again.
+// call and is not remembered, so the next call tries Meet again. The meeting that
+// is created is stored per appointment, with the provider that really created it,
+// and a stored meeting is not moved.
 function createMeetingService({ selected, providers }) {
   const meet = providers.meet ? assertVideoProvider(providers.meet) : null;
   const jitsi = providers.jitsi ? assertVideoProvider(providers.jitsi) : null;

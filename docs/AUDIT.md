@@ -23,6 +23,9 @@ Each event writes one entry, except where a row says otherwise.
 | An appointment is created | `appointment.create` | `success` | `appointment`, with the new id | the caller's center |
 | A consultation is created | `consultation.create` | `success` | `consultation`, with the new id | the center of its appointment |
 | A video meeting is created in Google Meet or Jitsi | `meeting.create_meet` or `meeting.create_jitsi` | `success` | `appointment`, with the id | the center of the appointment |
+| A stored video meeting is read by a participant, or a repeated `POST` returns the stored meeting | `meeting.read` | `success` | `appointment`, with the id | the center of the appointment |
+| A meeting read is refused with 404 | `meeting.read` | `denied`, with reason | `appointment`, with the id when it is known | see the center rule below |
+| A meeting is refused because the appointment is not `scheduled` (`cancelled` or `completed`) | `meeting.create` | `denied`, reason `appointment_closed` | `appointment`, with the id | the center of the appointment |
 | Google Meet fails, times out, or hits its quota, and the meeting moves to Jitsi | `meeting.failover` | `failure`, with reason `meet_error`, `meet_timeout`, or `meet_quota` | `appointment`, with the id | the center of the appointment |
 | A meeting request is refused, or no video provider is configured | `meeting.create` | `denied`, with a reason, or `failure` with reason `not_configured` | `appointment`, with the id when it is known | see the center rule below |
 | A chat connection opens | `chat.connect` | `success` | `appointment`, with the id | the center of the appointment |
@@ -35,7 +38,9 @@ Each event writes one entry, except where a row says otherwise.
 | A request matches no route rule | `request.denied` | `denied`, reason `no_rule` | `route`, no id | none |
 | `GET /audit` is refused | `audit.read` | `denied`, with reason | `audit`, no id | the caller's center |
 
-Successful appointment reads are not logged. Successful consultation reads are.
+Successful appointment reads are not logged. Successful consultation reads and successful
+meeting reads are. A meeting read that finds no meeting is not logged, because the client
+asks again every 15 seconds.
 
 No administration routes exist yet, so nothing is logged for them. A route added
 later for administration must write its entries here.
@@ -80,7 +85,7 @@ A caller from another center does not see it.
 | `participant_other_center` | A participant of a new appointment belongs to another center. |
 | `participant_wrong_role` | A participant of a new appointment has the wrong role. |
 | `no_rule` | No route rule matches the request. |
-| `appointment_closed` | The appointment is not `scheduled`, so its chat is closed. A message or a connection is refused. |
+| `appointment_closed` | The appointment is not `scheduled`. A chat message or connection is refused, and a video meeting is not created. |
 | `not_configured` | `VIDEO_PROVIDER` is not set, so no meeting can be created. |
 | `meet_error`, `meet_timeout`, `meet_quota` | Google Meet failed, hit its time limit, or hit its quota. The meeting moves to Jitsi. |
 | `user_not_found` | The verified email has no `users` row. |

@@ -162,14 +162,15 @@ async function readAppointment(ctx) {
   return `appointment ${id} listed and read (read-only)`;
 }
 
-// Step 3. The professional creates the video meeting. Meet or Jitsi both pass.
+// Step 3. The professional creates the video meeting. Meet or Jitsi both pass. Then the
+// client reads the stored meeting and must get the same provider and the same address,
+// and a second request of the professional must answer 200 with the same address.
+// The answers are compared and never printed, because the address can hold a token.
 async function createMeeting(ctx) {
-  const res = await send(ctx.api(`/appointments/${enc(ctx.appointmentId)}/meeting`), {
-    method: 'POST',
-    jar: ctx.people.professional.jar,
-    origin: ctx.origin,
-    json: {},
-  });
+  const route = ctx.api(`/appointments/${enc(ctx.appointmentId)}/meeting`);
+  const { professional, client } = ctx.people;
+
+  const res = await send(route, { method: 'POST', jar: professional.jar, origin: ctx.origin, json: {} });
   if (res.status !== 201) {
     throw new SmokeFailure(`the meeting was not created (HTTP ${res.status}, ${errorCode(res.text)})`);
   }
@@ -177,8 +178,27 @@ async function createMeeting(ctx) {
   if (!body || !MEETING_PROVIDERS.includes(body.provider) || typeof body.url !== 'string' || body.url === '') {
     throw new SmokeFailure('the meeting answer has an unexpected shape');
   }
+
+  const read = await send(route, { jar: client.jar });
+  if (read.status !== 200) {
+    throw new SmokeFailure(`the client could not read the meeting (HTTP ${read.status}, ${errorCode(read.text)})`);
+  }
+  const seen = safeJson(read.text);
+  if (!seen || seen.provider !== body.provider || seen.url !== body.url) {
+    throw new SmokeFailure('the client did not get the same provider and address as the professional');
+  }
+
+  const again = await send(route, { method: 'POST', jar: professional.jar, origin: ctx.origin, json: {} });
+  if (again.status !== 200) {
+    throw new SmokeFailure(`the repeated request did not answer 200 (HTTP ${again.status}, ${errorCode(again.text)})`);
+  }
+  const same = safeJson(again.text);
+  if (!same || same.provider !== body.provider || same.url !== body.url) {
+    throw new SmokeFailure('the repeated request did not return the same meeting');
+  }
+
   ctx.meetingProvider = body.provider;
-  return `meeting created, provider ${body.provider}`;
+  return `meeting created, provider ${body.provider}; the client reads the same room; a repeated request returns it unchanged`;
 }
 
 // Step 4. The professional sends a message, and both participants receive it.

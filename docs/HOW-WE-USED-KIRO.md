@@ -25,7 +25,7 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## Tasks, contracts, and checks
 
-- The work was split into 22 numbered tasks, K-01 to K-22, plus K-19b. Each task had a
+- 23 tasks were given to Kiro agents: K-01 to K-24 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task had a
   written contract with an objective, the files it may change, what is out of scope, an
   acceptance criterion, and a verification command. (Source: `KIRO-USO.md`, Tasks.)
 - Each task had its own branch and one commit. The project director checked the task
@@ -37,12 +37,11 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## Specifications
 
-- From K-06 on, each task began by writing a specification in `.kiro/specs/<task>/`. A
+- From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11 and K-19b, which have none. A
   specification has three files: `requirements.md`, `design.md`, and `tasks.md`. The task
   was then implemented against that specification. (Source: `KIRO-USO.md`, Specifications;
   folder `.kiro/specs/`.)
-- The repository holds specifications for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14,
-  k-16, k-17, k-18, k-19, k-20, k-21, and k-22. (Source: folder `.kiro/specs/`.)
+- The repository holds specifications for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, and k-24. There is no folder for K-11 and K-15. (Source: folder `.kiro/specs/`.)
 
 ## Steering
 
@@ -80,13 +79,13 @@ checked. Each claim names its source. Three kinds of source appear:
 2. **K-05, first attempt.** The attempt stopped with a correct diagnosis. The file scope of
    the contract did not include the migrations and the wiring the task needed. The scope
    was extended. (Source: `KIRO-USO.md`, What failed, item 2.)
-3. **K-19b, demo package.** The demo package contained a test file. The static tests did
-   not detect it. The fix is in commit `8c5a15f`. The package builder now rejects any path
-   outside `DEBIAN/`, `usr/`, and `etc/`. (Source: `KIRO-USO.md`, What failed, item 3;
-   commit `8c5a15f`.)
-4. **K-18, frontend test.** One frontend test was intermittent. It waited for a header
-   instead of the socket. The test was made stable. (Source: `KIRO-USO.md`, What failed,
-   item 4.)
+3. **K-19b, demo package.** The demo package contained a test file. It was found by
+   running the real package build, not by the static tests. The fix is in commit
+   `8c5a15f`. The package builder now rejects any path outside `DEBIAN/`, `usr/`, and
+   `etc/`. (Source: `KIRO-USO.md`, What failed, item 3; commit `8c5a15f`.)
+4. **K-18, frontend test.** One frontend test was intermittent. It waited for a heading
+   instead of the socket. It was found by running the real flow, not by the static tests.
+   The test was made stable. (Source: `KIRO-USO.md`, What failed, item 4.)
 5. **Checks the tasks could not run.** Several tasks said plainly what they could not check.
    Those points are listed as not verified. Examples in the repository:
    - K-09: the MariaDB integration test was written, not run, because MariaDB was not
@@ -98,6 +97,10 @@ checked. Each claim names its source. Three kinds of source appear:
    - K-21: `apache2ctl configtest`, `dpkg-deb`, the real `dpkg` conffile prompt, and a live
      `/version` were not tested in the task (`.kiro/specs/k-21/design.md`).
    (Source: `KIRO-USO.md`, What failed, item 5; the files named above.)
+6. While the reviewer documents were being checked, the director found that video meetings
+   were not stored: every click created a new room and the client could not join the
+   professional's room. K-23 stores the meeting per appointment and lets the client read it.
+   (Source: `api/migrations/0005_meetings.sql`, `api/src/video/meeting.store.http.test.js`.)
 
 ## Size of the work
 

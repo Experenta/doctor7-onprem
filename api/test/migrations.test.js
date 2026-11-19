@@ -160,10 +160,32 @@ test('the schema declares exactly the application and sign-in tables', () => {
       'chat_messages',
       'consultations',
       'login_attempts',
+      'meetings',
       'sessions',
       'users',
     ]
   );
+});
+
+test('the meetings migration keys the table by appointment, cascades on delete, and drops only that table', () => {
+  const meetings = migrations.find((m) => m.version === '0005_meetings');
+  assert.ok(meetings, '0005_meetings is missing');
+  assert.equal(meetings.up.length, 1);
+  const [up] = meetings.up;
+  assert.match(up, /^CREATE TABLE IF NOT EXISTS meetings /);
+  assert.match(up, /appointment_id VARCHAR\(64\) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL/);
+  assert.match(up, /provider ENUM\('meet', 'jitsi'\) NOT NULL/);
+  assert.match(up, /url TEXT NOT NULL/);
+  assert.match(up, /created_by VARCHAR\(64\) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL/);
+  assert.match(up, /created_at DATETIME\(3\) NOT NULL/);
+  assert.match(up, /PRIMARY KEY \(appointment_id\)/);
+  assert.match(up, /FOREIGN KEY \(appointment_id\) REFERENCES appointments \(id\) ON DELETE CASCADE/);
+  assert.deepEqual(meetings.down, ['DROP TABLE IF EXISTS meetings']);
+});
+
+test('the meetings migration runs after the tables it references', () => {
+  const versions = migrations.map((m) => m.version);
+  assert.ok(versions.indexOf('0005_meetings') > versions.indexOf('0001_initial_schema'));
 });
 
 test('parseMigration rejects a file without a down section', () => {

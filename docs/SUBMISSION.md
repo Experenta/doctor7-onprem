@@ -17,8 +17,8 @@ database. No container runtime is used.
 
 - Professionals schedule appointments, start the video meeting of an appointment, write
   consultation notes, and chat with their client.
-- Clients see their own appointments and consultation records, and chat with their
-  professional.
+- Clients see their own appointments and consultation records, join the video meeting that
+  their professional started, and chat with their professional.
 - Administrators see every appointment of their center and schedule new ones.
 - Auditors read the audit log of their center. The log records who did what and holds no
   clinical text.
@@ -39,9 +39,8 @@ a service account, and Kiro.
 
 ## How we used Kiro
 
-Kiro CLI agents built the project in 22 numbered tasks, K-01 to K-22, plus K-19b. Each task
-had a written contract and its own branch. From K-06 on, each task also began with a
-specification in `.kiro/specs/`. The repository has steering files in `.kiro/steering/` and
+Kiro CLI agents built the project. 23 tasks were given to Kiro agents: K-01 to K-24 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task
+had a written contract and its own branch. From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11 and K-19b, which have none. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, and k-24. There is no folder for K-11 and K-15. The repository has steering files in `.kiro/steering/` and
 two hook files in `.kiro/hooks/`. The hooks have not been tested in the Kiro IDE.
 
 A director agent, supervised by a person, reviewed each task. Before each pull request it ran
@@ -59,8 +58,9 @@ and how it was corrected, and what was not verified.
    - **Professional.** Sees the appointments where the professional takes part, creates
      appointments, starts video meetings, writes consultation notes, and chats with the
      client.
-   - **Client.** Sees their own appointments and consultation records, and chats with the
-     professional. The video panel says that the professional starts the meeting.
+   - **Client.** Sees their own appointments and consultation records, joins the video meeting
+     that the professional started, and chats with the professional. Until the professional
+     starts the meeting, the video panel says so and asks again every 15 seconds.
    - **Administrator.** Sees every appointment of the center and creates new ones. This role
      has no chat and does not start video meetings.
    - **Auditor.** Reads the audit log of the center. This role has no access to appointments
@@ -75,8 +75,12 @@ and how it was corrected, and what was not verified.
    - As the Administrator, use the same form. Copy both IDs from an existing appointment.
 4. Start the video call. As the Professional, open a scheduled appointment and select
    **Start video meeting**. The demo embeds the self-hosted Jitsi room in the page. A meeting
-   on Google Meet would open in a new browser tab. A real audio and video call between two
-   participants has not been verified.
+   on Google Meet would open in a new browser tab. The server stores the meeting with the
+   appointment, so the Client can enter the same room: open a second window or a private
+   window, sign in as the Client with the demonstration account, and open the same
+   appointment. The video panel shows the room that the Professional started. If the
+   Professional has not started it yet, the panel says so and asks again every 15 seconds. A
+   real audio and video call between two participants has not been verified.
 5. Send a chat message. As the Professional or the Client, open a scheduled appointment, type
    in the chat, and select **Send message**. The chat is closed for appointments that are not
    scheduled.

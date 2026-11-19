@@ -12,7 +12,7 @@ deployment.
 |---|---|---|
 | 1 | sign-in | The four demo accounts sign in through the identity provider and read their role with `/auth/me`. `no.role@example.test` gets `403`, and `pending@example.test` gets `401`. Neither opens a session. |
 | 2 | appointment | The professional creates a scheduled appointment with the client. Read-only mode lists the professional's appointments and reads the first one. |
-| 3 | video meeting | The professional creates the meeting. Provider `meet` or `jitsi` passes, so a Meet failure that falls back to Jitsi passes too. |
+| 3 | video meeting | The professional creates the meeting (`201`). Provider `meet` or `jitsi` passes, so a Meet failure that falls back to Jitsi passes too. The client then reads it with `GET` and must get the same provider and the same address. A second `POST` of the professional must answer `200` with the same address. |
 | 4 | chat | The professional sends a message on `/ws`, and both participants receive it. |
 | 5 | consultation create | The professional creates a consultation record on the appointment. |
 | 6 | consultation read | The professional reads the record back, and the note matches. |
@@ -27,7 +27,7 @@ doctor7 smoke: in process, write run
 Records created by this run have text that starts with smoke-.
 OK   1/7 sign-in: 4 demo roles signed in; 2 refusals as expected
 OK   2/7 appointment: appointment <id> created, status scheduled
-OK   3/7 video meeting: meeting created, provider meet
+OK   3/7 video meeting: meeting created, provider meet; the client reads the same room; a repeated request returns it unchanged
 OK   4/7 chat: message sent by the professional and read by both participants
 OK   5/7 consultation create: consultation record <id> created on appointment <id>
 OK   6/7 consultation read: consultation record <id> read back, note matches
@@ -137,7 +137,9 @@ every 15 minutes per client IP address, and everyone behind the same address sha
   virtual host of the demo does. Without the rewrite, the callback does not get the
   binding cookie and step 1 fails with `HTTP 400`.
 - **No browser.** The smoke does not open the meeting page or the Jitsi frame. It
-  checks that a meeting exists and has a provider. Audio and video are not tested.
+  checks that a meeting exists, that the client reads the same provider and address as
+  the professional, and that a repeated request returns that meeting. It compares the
+  addresses and never prints them. Audio and video are not tested.
 - **Health probes.** The smoke does not call `/healthz`, `/readyz`, or `/version`.
   Check them with `curl` after a deployment.
 

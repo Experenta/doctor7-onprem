@@ -1,11 +1,42 @@
 # Video meetings
 
-A professional creates the video meeting of an appointment with
+A professional starts the video meeting of an appointment with
 `POST /appointments/:id/meeting`. The server creates the meeting with Google Meet
-or with Jitsi, as configured. When Meet fails, the new meeting is created in Jitsi.
-The response says which provider was used.
+or with Jitsi, as configured, and stores it with the appointment. When Meet fails, the
+new meeting is created in Jitsi. The response says which provider was used. The client of
+the appointment reads the stored meeting with `GET /appointments/:id/meeting` and enters
+the same room.
 
-The code is in `api/src/video/`. The specification is in `.kiro/specs/k-06/`.
+The code is in `api/src/video/`. The specifications are in `.kiro/specs/k-06/` and
+`.kiro/specs/k-23/`.
+
+## The stored meeting
+
+The table `meetings` (migration `api/migrations/0005_meetings.sql`) has one row per
+appointment.
+
+| Column | Meaning |
+|---|---|
+| `appointment_id` | Primary key, and foreign key to `appointments` with `ON DELETE CASCADE`. Deleting an appointment deletes its meeting. |
+| `provider` | `meet` or `jitsi`: the provider that really created the meeting, after any failover. |
+| `url` | The meeting address (`TEXT`). A signed Jitsi address carries a token. This column is the only place where the server keeps it. |
+| `created_by` | The id of the professional who created it. |
+| `created_at` | UTC, `DATETIME(3)`. |
+
+`POST /appointments/:id/meeting` is idempotent:
+
+| Case | Answer |
+|---|---|
+| The appointment has no meeting | The server creates it, stores it, and answers `201 {provider, url}`. |
+| The appointment already has one | `200` with the same `{provider, url}`. No room is created and no provider is called. |
+| Two requests arrive together | One meeting is stored. The request that hits the primary key answers `200` with the stored one. The room it made is dropped. |
+| The appointment is `cancelled` or `completed` | `409 appointment_closed`. Nothing is created. |
+
+`GET /appointments/:id/meeting` answers `200 {provider, url}` to the professional and the
+client of the appointment, and `404 no_meeting` while the professional has not started the
+meeting. A user who cannot read the appointment gets the usual `404 not_found`, and so do
+the administrator and the auditor, who do not take part. The web client of the client asks
+again every 15 seconds while its tab is visible.
 
 ## Settings
 
@@ -50,12 +81,13 @@ appointment.
 
 | Caller | Answer |
 |---|---|
-| The professional of the appointment | `201` |
+| The professional of the appointment | `201` for the first call, `200` for a repeated one |
 | No session | `401` |
 | Body that is not `application/json` | `415` |
 | A `client` or an `auditor` (the route does not admit the role) | `403` |
 | An administrator of the center (can read the appointment, is not a participant) | `403` |
 | A caller who cannot read the appointment: it does not exist, belongs to another center, or the caller does not take part in it | `404`, the same body for every reason |
+| The professional, for a `cancelled` or `completed` appointment | `409 appointment_closed` |
 
 The audit log keeps the real reason of every refusal. A refused request never
 calls a video provider.
@@ -71,9 +103,10 @@ meeting in Jitsi. These count as a failure:
 | HTTP 429, or an error status `RESOURCE_EXHAUSTED` | `meet_quota` |
 | Any other HTTP error (4xx or 5xx), network error, invalid answer, a meeting address that is not on `meet.google.com`, or a delegation that Google refuses | `meet_error` |
 
-The decision is made for each request. Nothing is stored, so a meeting that
-exists is never moved, and the next request tries Meet again. The response has
-`provider: "jitsi"`, so the client knows where the meeting is.
+The decision to fail over is made for each new meeting, and it is not remembered. The next new meeting tries Meet again. The meeting that is created is stored per
+appointment in the `meetings` table, with the provider that really created it. A stored meeting is never moved: a repeated
+request returns it as it is, and the response has `provider: "jitsi"` when Jitsi
+created it, so the client knows where the meeting is.
 
 The server log gets one line per failover with the reason only
 (`Video failover to jitsi: meet_timeout.`).
@@ -88,8 +121,13 @@ All entries have target type `appointment` and the appointment id.
 | Meeting created in Jitsi (chosen, or after a failover) | `meeting.create_jitsi` | `success` | none |
 | Meet failed, Jitsi takes over | `meeting.failover` | `failure` | `meet_error`, `meet_timeout`, `meet_quota` |
 | No provider configured | `meeting.create` | `failure` | `not_configured` |
-| Request refused by the handler | `meeting.create` | `denied` | `invalid_id`, `not_found`, `other_center`, `no_center`, `not_participant`, `action_not_allowed` |
+| Request refused by the handler | `meeting.create` | `denied` | `invalid_id`, `not_found`, `other_center`, `no_center`, `not_participant`, `action_not_allowed`, `appointment_closed` |
 | Request refused by the gate | `appointment.update` | `denied` | `role_not_allowed` |
+| The address is returned: a successful `GET`, or a repeated `POST` that answers `200` | `meeting.read` | `success` | none |
+| `GET` refused by the handler | `meeting.read` | `denied` | `invalid_id`, `not_found`, `other_center`, `no_center`, `not_participant`, `role_not_allowed` |
+
+A `GET` that finds no meeting (`404 no_meeting`) writes no entry. The client asks again
+every 15 seconds and nothing is read.
 
 A failover writes two entries: `meeting.failover`, then `meeting.create_jitsi`.
 The failover entry is written before the Jitsi meeting is created. If that write
@@ -106,7 +144,8 @@ written to the log or the audit table.
   outside this task.
 - The URL of a signed Jitsi meeting holds a token for that room. It works until one
   hour after the appointment ends. The response has `Cache-Control: no-store`.
-  Treat the URL as private. It is not stored by the server.
+  Treat the URL as private. The server stores it in the `meetings` table and returns it
+  only to the professional and the client of the appointment.
 
 ## Adapter interface
 
