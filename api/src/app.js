@@ -9,6 +9,7 @@ const { createAuth } = require('./auth');
 const { createAuthzGate } = require('./authz/gate');
 const { createCare } = require('./care');
 const { createAudit } = require('./audit');
+const { createVideo, loadVideoConfig } = require('./video');
 
 const DEFAULT_RATE_LIMIT = { windowMs: 60 * 1000, limit: 120 };
 const JSON_BODY_LIMIT = '100kb';
@@ -20,7 +21,9 @@ const JSON_BODY_LIMIT = '100kb';
 // settings. When it is missing or disabled, the /auth routes and the protected
 // routes are not mounted. `careStore` replaces the SQL store for appointments
 // and consultations, which tests do. `auditStore` replaces the SQL store for
-// the audit log, which tests do.
+// the audit log, which tests do. `video` holds `config`, the result of
+// loadVideoConfig. When it is missing, the config is read from process.env, and
+// an invalid VIDEO_PROVIDER stops startup.
 function createApp({
   db,
   rateLimit: rateOptions = {},
@@ -28,6 +31,7 @@ function createApp({
   auth: authOptions,
   careStore,
   auditStore,
+  video: videoOptions,
   logger = console,
 } = {}) {
   if (!db) {
@@ -61,6 +65,15 @@ function createApp({
     // route that has no rule, so a new route is closed until a rule opens it.
     app.use(createAuthzGate({ requireSession: auth.requireSession, audit }));
     app.use(createCare({ db, store: careStore, audit }).router);
+    app.use(
+      createVideo({
+        db,
+        store: careStore,
+        audit,
+        config: (videoOptions && videoOptions.config) || loadVideoConfig(process.env),
+        logger,
+      }).router
+    );
     // The audit router comes last. Its only route is GET /audit, which the gate admits for auditors.
     app.use(audit.router);
   }

@@ -12,6 +12,9 @@ const ROUTE_RULES = Object.freeze([
   { method: 'GET', path: '/appointments/:id', resource: 'appointment', action: 'read' },
   { method: 'POST', path: '/appointments', resource: 'appointment', action: 'create' },
   { method: 'POST', path: '/consultations', resource: 'consultation', action: 'create' },
+  // Creating a meeting changes the appointment, so it uses the update action.
+  // The handler also requires the caller to be the professional of the appointment.
+  { method: 'POST', path: '/appointments/:id/meeting', resource: 'appointment', action: 'update' },
   { method: 'GET', path: '/consultations/:id', resource: 'consultation', action: 'read' },
   { method: 'GET', path: '/audit', resource: 'audit', action: 'read' },
 ]);

@@ -43,6 +43,7 @@ appointment and consultation endpoints exist. The access rules are in
 | GET | `/appointments` | `professional`, `client`, `admin` | Lists the appointments the caller may read. |
 | GET | `/appointments/:id` | `professional`, `client`, `admin` | Reads one appointment. |
 | POST | `/appointments` | `professional`, `admin` | Creates an appointment in the caller's center. |
+| POST | `/appointments/:id/meeting` | `professional` of the appointment | Creates the video meeting of an appointment. See `docs/VIDEO.md`. |
 | POST | `/consultations` | `professional` | Creates a consultation for an appointment of the caller. |
 | GET | `/consultations/:id` | `professional`, `client`, `admin` | Reads one consultation. |
 | GET | `/audit` | `auditor` | Lists audit entries of the caller's center. |
@@ -299,6 +300,39 @@ appointment but may not create a consultation on it. A `client` or an `admin`
 sends the request to a route that does not admit their role, so they also get
 `403`, whatever the appointment id is.
 
+### POST /appointments/:id/meeting
+
+Roles: the `professional` of the appointment. The server creates the meeting with
+the provider set by `VIDEO_PROVIDER` (`meet` or `jitsi`). The request takes no body
+fields, but it must be sent with `Content-Type: application/json`. The client does
+not choose the provider.
+
+```sh
+curl -i -X POST http://127.0.0.1:3000/appointments/5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f/meeting \
+  -H 'Content-Type: application/json' \
+  -b 'd7_session=<token>' \
+  -d '{}'
+```
+
+Response `201`, with `Cache-Control: no-store`:
+
+```json
+{"provider":"jitsi","url":"https://jitsi.example.test/doctor7-0f1e2d3c4b5a69788796a5b4c3d2e1f0"}
+```
+
+`provider` is the provider that really created the meeting. It is `jitsi` when
+`VIDEO_PROVIDER` is `jitsi`, and also when it is `meet` but Meet failed (error,
+time limit, or quota). The failover is recorded in the audit log. A `meet` URL
+opens in a separate tab. A `jitsi` URL may be embedded. The URL can contain a
+token, so treat it as private. See `docs/VIDEO.md`.
+
+Errors: `400 invalid_request` when the body has fields. `404 not_found` when the
+appointment does not exist or the caller may not read it, with the same body for
+both cases. `403 forbidden` for a caller who may read the appointment but may not
+create its meeting (an administrator of the center, who is not a participant), and
+for the roles `client` and `auditor`. `503 video_not_configured` when
+`VIDEO_PROVIDER` is not set.
+
 ### GET /consultations/:id
 
 Roles: `professional` and `client` of the appointment, and `admin` of its center.
@@ -373,4 +407,5 @@ forbidden` for any role other than `auditor`, and for an auditor without a cente
 | 429 | `rate_limited` | The client exceeded the rate limit. |
 | 500 | `internal_error` | An unexpected failure. The details are in the server log only. |
 | 503 | `database_unavailable` | The database did not answer the readiness check. |
+| 503 | `video_not_configured` | `VIDEO_PROVIDER` is not set, so no meeting can be created. |
 | 502 | `identity_provider_unavailable` | The identity provider could not be reached. |
