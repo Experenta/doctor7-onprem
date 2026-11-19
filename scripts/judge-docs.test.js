@@ -1,7 +1,8 @@
 'use strict';
 
 // Checks of the documents that judges read: the demo address marker, no real address
-// in the documents, the length of the demo script, and the external forbidden-word list.
+// in the documents, the length of the demo script, the task count and the specification
+// folders of the Kiro documents, and the external forbidden-word list.
 // The list is never stored in the repository (see scripts/scan-secrets.js). Without a
 // list, the check that needs it is skipped with a notice.
 
@@ -152,6 +153,44 @@ test('the demo script adds up to 180 seconds or less, and its own numbers agree'
       new RegExp(`\\| ${segment.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\| ${segment.length} s \\|`).test(text),
       `the table row of "${segment.title}" is missing or differs`
     );
+  }
+});
+
+// ---- The task count and the specification folders of the Kiro documents ----
+
+const TASK_COUNT = 24;
+const TASK_PHRASE = `${TASK_COUNT} numbered tasks, K-01 to K-24, plus K-19b`;
+const KIRO_DOCS = [
+  { file: 'docs/HOW-WE-USED-KIRO.md', list: /holds specifications for ([^.]+)\./ },
+  { file: 'docs/SUBMISSION.md', list: /specifications in `\.kiro\/specs\/` are for ([^.]+)\./ },
+];
+
+// The folders of .kiro/specs/ whose names are k-NN, sorted.
+function specFolders() {
+  return fs
+    .readdirSync(path.join(ROOT, '.kiro', 'specs'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^k-\d{2}$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+test('the Kiro documents state the task count, and no other count of numbered tasks', () => {
+  for (const { file } of KIRO_DOCS) {
+    const text = read(file);
+    assert.ok(text.includes(TASK_PHRASE), `${file} must state "${TASK_PHRASE}"`);
+    const counts = [...text.matchAll(/(\d+) numbered tasks/g)].map((m) => Number(m[1]));
+    assert.deepEqual(counts, [TASK_COUNT], `${file} states another count of numbered tasks`);
+  }
+});
+
+test('the Kiro documents list the specification folders that exist in .kiro/specs/', () => {
+  const folders = specFolders();
+  assert.ok(folders.length > 0, 'the specification folders are present');
+  for (const { file, list } of KIRO_DOCS) {
+    const match = read(file).match(list);
+    assert.ok(match, `${file} must list the specification folders`);
+    const listed = match[1].match(/k-\d{2}/g) || [];
+    assert.deepEqual([...listed].sort(), folders, `${file} differs from the folders in .kiro/specs/`);
   }
 });
 

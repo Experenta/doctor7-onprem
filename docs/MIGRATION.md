@@ -4,7 +4,9 @@ This document covers the loader (`seed/load.js`) and the seed generator
 (`seed/generate.js`). The loader reads a JSON export, one file per collection, and
 writes the rows to the tables that the API migrations create. The generator writes a
 synthetic export that the loader accepts with no rejections. The schema is defined by
-the migrations in `api/migrations/`.
+the migrations in `api/migrations/`. Migration `0005_meetings.sql` creates the table
+`meetings`, which holds one video meeting per appointment. The loader does not read or
+write that table.
 
 The repository holds no real data and no source export. The export format below is
 the one this loader expects. Check it against the real export before the first load.
@@ -13,7 +15,8 @@ the one this loader expects. Check it against the real export before the first l
 
 - Node.js 22 or later. The loader uses the `mysql2` package from the root
   `node_modules`. Nothing is installed by the loader.
-- The schema applied by the API migrations, from `DATABASE_URL`:
+- The schema applied by the API migrations, from `DATABASE_URL`. Apply them before the
+  new API version starts. The list includes `0005_meetings.sql`, which creates `meetings`:
 
   ```sh
   DATABASE_URL=<mysql URL> node api/src/db/migrations.js up
@@ -181,3 +184,5 @@ use an empty database.
 - The loader checks the participant role and center of appointments and chat senders.
   It does not check other business rules, such as the status of an appointment that
   has a consultation.
+- The export has no meetings file, and the loader does not load `meetings`. The API creates
+  a video meeting when the professional starts it. The generated seed holds no meetings.

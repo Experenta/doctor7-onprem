@@ -23,7 +23,7 @@ own service, as the administrator chooses. A Jitsi server is optional.
 | Browser | The web application, a React single-page app built with Vite. It calls only `/api` and `/ws` on the site host. | `web/`, `docs/API.md` |
 | Site host | Apache 2.4 with TLS. It serves the static files, proxies `/api/` and `/ws` to the API, and sends the security headers. | `docs/OPERATIONS.md`, `packaging/web/` |
 | API | Node.js 22 service `doctor7-api.service`, listening on `127.0.0.1`. It runs as the `doctor7` user with systemd sandboxing. A timer deletes old chat messages once a day. | `docs/OPERATIONS.md`, `docs/API.md` |
-| Database | MariaDB, with one database and one application account. It holds centers, users, appointments, consultations, chat messages, sessions, and the audit log. | `api/migrations/`, `docs/AUDIT.md` |
+| Database | MariaDB, with one database and one application account. It holds centers, users, appointments, consultations, chat messages, video meetings, sessions, and the audit log. | `api/migrations/`, `docs/AUDIT.md` |
 | Identity provider | The clinic's OpenID Connect provider. The demo uses a mock provider on the demo host. The mock accepts any account without a password. | `docs/API.md`, `docs/DEMO.md` |
 | Google Meet | The Google Meet API, called from the API with a service account. The demo uses a simulator in `tools/mock-google/`. | `docs/VIDEO.md` |
 | Jitsi server | A self-hosted Jitsi installation. The API builds the meeting address and can sign a token for it. The API never connects to the Jitsi server. The verified Jitsi install ran on its own Debian 13 virtual machine. | `docs/VIDEO.md`, `docs/PORTS.md`, `docs/DEMO.md` |
@@ -74,16 +74,21 @@ Source: `docs/API.md`.
 
 ### Video meeting
 
-1. The professional calls `POST /appointments/:id/meeting`.
+1. The professional calls `POST /appointments/:id/meeting`. The API refuses the request
+   with `409 appointment_closed` unless the appointment is `scheduled`.
 2. With `VIDEO_PROVIDER=meet`, the API asks Google Meet for a space. If Meet times out,
    hits its quota, or fails, the API writes a `meeting.failover` audit entry and creates
    a Jitsi meeting.
-3. The response names the provider that created the meeting and gives its address. The
-   response has `Cache-Control: no-store`.
-4. A Meet address opens in a new browser tab. A Jitsi address is embedded in an iframe,
-   and the content policy allows only the Jitsi origin.
+3. The API stores the meeting in the `meetings` table, keyed by the appointment, with the
+   provider that created it. An appointment has at most one stored meeting. A repeated
+   `POST` returns the stored meeting and creates nothing.
+4. The client calls `GET /appointments/:id/meeting` and receives the same provider and
+   address. Until the professional starts the meeting, the answer is `404 no_meeting`, and
+   the client asks again every 15 seconds.
+5. The response has `Cache-Control: no-store`. A Meet address opens in a new browser tab. A
+   Jitsi address is embedded in an iframe, and the content policy allows only the Jitsi origin.
 
-Source: `docs/VIDEO.md`, `docs/API.md`.
+Source: `docs/VIDEO.md`, `docs/API.md`, `api/migrations/0005_meetings.sql`.
 
 ### Packages and upgrades
 
@@ -100,7 +105,7 @@ Source: `docs/OPERATIONS.md`.
 | --- | --- | --- |
 | No containers. Debian packages, systemd units, and an Apache virtual host. | The product runs on one Debian server with Apache and MariaDB, without containers. | `.kiro/steering/tech.md`, `docs/OPERATIONS.md` |
 | The video provider is a configured adapter with one interface, used by both Meet and Jitsi. | The clinic picks the provider. The application code does not depend on one provider. | `docs/VIDEO.md` |
-| The failover runs on each request and stores nothing. A meeting that exists is never moved. | Each request tries Meet first. Nothing is kept between requests, so the outcome is easy to audit. | `docs/VIDEO.md` |
+| The provider is chosen when a meeting is created. Meet is tried first. The created meeting, with the provider really used, is stored once per appointment in the `meetings` table, and a stored meeting is never replaced. | Both participants enter the same room. The client reads the stored meeting with `GET /appointments/:id/meeting`. A failed Meet creation moves that one creation to Jitsi. | `docs/VIDEO.md`, `api/migrations/0005_meetings.sql`, `docs/API.md` |
 | Meet opens in a new tab and is never embedded. Jitsi is embedded in an iframe. | The frontend rules set this split. The content policy allows the Jitsi origin only. | `.kiro/steering/frontend-design.md`, `docs/SECURITY.md` |
 | Deny by default. A route with no rule answers `403`. | A new route stays closed until someone writes its rule. | `docs/AUTHORIZATION.md` |
 | Three checks on each request: route rule, role, and the record itself. | A role alone does not show that a user may read one record of their own center. | `docs/AUTHORIZATION.md` |

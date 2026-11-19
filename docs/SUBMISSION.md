@@ -39,9 +39,9 @@ a service account, and Kiro.
 
 ## How we used Kiro
 
-Kiro CLI agents built the project in 22 numbered tasks, K-01 to K-22, plus K-19b. Each task
+Kiro CLI agents built the project in 24 numbered tasks, K-01 to K-24, plus K-19b. Each task
 had a written contract and its own branch. From K-06 on, each task also began with a
-specification in `.kiro/specs/`. The repository has steering files in `.kiro/steering/` and
+specification in `.kiro/specs/`. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, and k-24. There is no folder for K-11 and K-15. The repository has steering files in `.kiro/steering/` and
 two hook files in `.kiro/hooks/`. The hooks have not been tested in the Kiro IDE.
 
 A director agent, supervised by a person, reviewed each task. Before each pull request it ran

@@ -87,7 +87,8 @@ Then, for the API:
 1. Set `DATABASE_URL` and the sign-in variables in `/etc/doctor7/api.env`. The
    callback address registered at the identity provider is
    `https://<host>/api/auth/callback`, and `OIDC_REDIRECT_URI` must be the same.
-2. Run the migrations:
+2. Run the migrations. They create every table, including `meetings` from
+   `0005_meetings.sql`, which stores one video meeting per appointment:
    `systemd-run --wait --pipe --collect -p User=doctor7 -p EnvironmentFile=/etc/doctor7/api.env /usr/lib/doctor7/run-task.sh migrate up`
 3. `systemctl start doctor7-api`
 
@@ -370,6 +371,13 @@ changed virtual host file as a conffile: `dpkg` asks before it replaces a file
 you edited. The section "Configuration files and reinstall" lists the options that
 answer that question without a prompt.
 
+The migrations must run before the new API answers requests. The new release adds the
+table `meetings` (migration `0005_meetings.sql`), which the video meeting routes use.
+The upgrade script runs `migrate up` after the install and before its restart. The
+`doctor7-api` postinst, however, restarts the API while the install runs, so during an
+upgrade the new code can run against the old schema until `migrate up` finishes. Check the
+result with `run-task.sh migrate status`.
+
 Rollback:
 
 ```sh
@@ -380,7 +388,9 @@ The script installs the older packages (a downgrade). Pass the `db` archive that
 the upgrade made first when the new release changed the schema, because older
 code may not work with a newer schema. Restoring it discards every change made
 after that backup. Without a schema change, leave the archive out. Check the
-migration list with `run-task.sh migrate status` before you decide.
+migration list with `run-task.sh migrate status` before you decide. The release that
+adds `0005_meetings.sql` is a schema change, so a rollback to an older release needs the
+`db` archive.
 
 Settings files in `/etc/doctor7` are not touched by an upgrade or a rollback.
 `apt-get remove` keeps them. `apt-get purge` deletes `api.env`, `backup.conf` and
