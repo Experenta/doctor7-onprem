@@ -39,8 +39,8 @@ a service account, and Kiro.
 
 ## How we used Kiro
 
-Kiro CLI agents built the project. 28 tasks were given to Kiro agents: K-01 to K-28 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task
-had a written contract and its own branch. From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, and k-28. There is no folder for K-11, K-15, K-25, and K-27. The repository has steering files in `.kiro/steering/` and
+Kiro CLI agents built the project. 29 tasks were given to Kiro agents: K-01 to K-29 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task
+had a written contract and its own branch. From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, and k-29. There is no folder for K-11, K-15, K-25, and K-27. The repository has steering files in `.kiro/steering/` and
 two hook files in `.kiro/hooks/`. The hooks have not been tested in the Kiro IDE.
 
 A director agent, supervised by a person, reviewed each task. Before each pull request it ran
@@ -74,7 +74,7 @@ and how it was corrected, and what was not verified.
      time (America/Bogota). Or open an existing appointment whose status is Scheduled.
    - As the Administrator, use the same form. Copy both IDs from an existing appointment.
 4. Start the video call. As the Professional, open a scheduled appointment and select
-   **Start video meeting**. The demo embeds the self-hosted Jitsi room in the page. A meeting
+   **Start video meeting**. The demo places the self-hosted Jitsi room in the page. The video frame has not been checked on the deployed demo with the K-29 room names. A meeting
    on Google Meet would open in a new browser tab. The server stores the meeting with the
    appointment, so the Client can enter the same room: open a second window or a private
    window, sign in as the Client with the demonstration account, and open the same
@@ -95,9 +95,10 @@ limit. The demo identity provider also has its own per-minute limits (`docs/DEMO
 
 ## What is verified and what is not
 
-- Verified on a Debian 13 virtual machine: the Jitsi meeting room loads over HTTPS, four
-  services are active, and the API creates a meeting and embeds it in the page (`docs/DEMO.md`,
-  Node 3).
+- Verified on a Debian 13 virtual machine: the entry page of the Jitsi meeting room, with its
+  «Join meeting» button, loads over HTTPS. Four services are active, and the API creates a
+  meeting (HTTP 201) and places its address in an iframe. The content of that iframe was not
+  checked on the VM (`docs/DEMO.md`, Node 3).
 - Not verified: a real audio and video call between two participants.
 - Not verified: Google Meet. The demo uses a simulator, not the real service.
 

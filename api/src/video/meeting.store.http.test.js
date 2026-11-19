@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const { startVideoApi, JITSI_BASE_URL } = require('./harness');
 
 const MEETING = '/appointments/a1/meeting';
-const JITSI_URL = new RegExp(`^${JITSI_BASE_URL.replace(/\./g, '\\.')}/doctor7-[0-9a-f]{32}$`);
+const JITSI_URL = new RegExp(`^${JITSI_BASE_URL.replace(/\./g, '\\.')}/doctor7[0-9a-f]{32}$`);
 
 async function withApi(options, fn) {
   const api = await startVideoApi(options);
@@ -99,6 +99,28 @@ test('two simultaneous POSTs end with one stored meeting and the same address in
     assert.equal(two.json.url, stored.url);
     assert.match(stored.url, JITSI_URL);
     assert.equal(api.entries('meeting.create_').length, 1, 'only the stored meeting is audited as created');
+  });
+});
+
+test('a meeting stored with the older hyphenated room name is read back unchanged', async () => {
+  await withApi({}, async (api) => {
+    const legacy = `${JITSI_BASE_URL}/doctor7-6f1c2b0a9d8e7f6a5b4c3d2e1f0a9b8c`;
+    await api.meetingStore.insertMeeting({
+      appointmentId: 'a1',
+      provider: 'jitsi',
+      url: legacy,
+      createdBy: 'u-pro1',
+      createdAt: new Date(),
+    });
+    const before = JSON.stringify(api.meetingStore.meetings.get('a1'));
+    const read = await api.call('GET', MEETING, { as: 'u-cli1' });
+    assert.equal(read.status, 200);
+    assert.deepEqual(read.json, { provider: 'jitsi', url: legacy });
+    assert.equal(JSON.stringify(api.meetingStore.meetings.get('a1')), before, 'the stored row is not changed');
+    const again = await api.call('POST', MEETING, { as: 'u-pro1', body: {} });
+    assert.equal(again.status, 200);
+    assert.equal(again.json.url, legacy);
+    assert.equal(api.google.requests.length, 0);
   });
 });
 

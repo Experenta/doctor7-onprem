@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { startVideoApi, JITSI_BASE_URL } = require('./harness');
 
 const MEET_URL = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
-const JITSI_URL = new RegExp(`^${JITSI_BASE_URL.replace(/\./g, '\\.')}/doctor7-[0-9a-f]{32}$`);
+const JITSI_URL = new RegExp(`^${JITSI_BASE_URL.replace(/\./g, '\\.')}/doctor7[0-9a-f]{32}$`);
 const MEETING = '/appointments/a1/meeting';
 
 async function withApi(options, fn) {
@@ -73,6 +73,8 @@ for (const [mode, reason] of Object.entries(FAILURES)) {
       assert.equal(res.status, 201);
       assert.equal(res.json.provider, 'jitsi');
       assert.match(res.json.url, JITSI_URL);
+      // The room the failover creates is alphanumeric, as the Jitsi Apache rule requires.
+      assert.match(new URL(res.json.url).pathname.slice(1), /^[a-zA-Z0-9]+$/);
       assert.deepEqual(summary(api.entries('meeting')), [
         ['meeting.failover', 'failure', reason, 'a1', 'u-pro1'],
         ['meeting.create_jitsi', 'success', null, 'a1', 'u-pro1'],
