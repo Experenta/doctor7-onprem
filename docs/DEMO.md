@@ -196,8 +196,7 @@ jitsi-meet/jaas-choice = false
 ```
 
 The lines above give the question and the answer. The verified install did not
-record the debconf type of each question. Confirm the type field against the Jitsi
-handbook before you reuse these lines.
+record the debconf type of each question.
 
 The certificate for `<jitsi-host>` was issued before the Jitsi install. It came from
 `certbot` in webroot mode, through a minimal port 80 virtual host for that name. The

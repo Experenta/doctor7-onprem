@@ -1,0 +1,228 @@
+'use strict';
+
+// Checks of the documents that judges read: the demo address marker, no real address
+// in the documents, the length of the demo script, and the external forbidden-word list.
+// The list is never stored in the repository (see scripts/scan-secrets.js). Without a
+// list, the check that needs it is skipped with a notice.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { resolveForbiddenWordsFile, loadForbiddenWords } = require('./scan-secrets');
+
+const ROOT = path.resolve(__dirname, '..');
+const DEMO_MARKER = '<DEMO_URL>';
+const MAX_SCRIPT_SECONDS = 180;
+
+// Hosts that may appear in a web address of the documents:
+//   - names under example.test and the reserved .example, localhost, and loopback;
+//   - placeholders such as <host> and <jitsi-host>;
+//   - the Jitsi package repository;
+//   - the repository site;
+//   - the public endpoints of Google that the video documents name as API addresses.
+const ALLOWED_HOSTS = new Set([
+  'localhost',
+  '127.0.0.1',
+  '[::1]',
+  'download.jitsi.org',
+  'github.com',
+  'www.googleapis.com',
+  'meet.googleapis.com',
+  'meet.google.com',
+]);
+
+function read(rel) {
+  return fs.readFileSync(path.join(ROOT, rel), 'utf8');
+}
+
+function filesUnder(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    return entry.isDirectory() ? filesUnder(full) : [full];
+  });
+}
+
+// README.md, docs/*.md (not nested), and everything under .kiro/.
+function judgeFiles() {
+  const docs = fs
+    .readdirSync(path.join(ROOT, 'docs'))
+    .filter((name) => name.endsWith('.md'))
+    .map((name) => path.join(ROOT, 'docs', name));
+  return [path.join(ROOT, 'README.md'), ...docs, ...filesUnder(path.join(ROOT, '.kiro'))];
+}
+
+const relative = (file) => path.relative(ROOT, file).split(path.sep).join('/');
+
+function hostAllowed(rawHost) {
+  const host = rawHost.toLowerCase().replace(/:\d+$/, '');
+  if (host === '' || host.includes('<')) return true; // a bare scheme in prose, or a placeholder
+  if (ALLOWED_HOSTS.has(host)) return true;
+  return host === 'example.test' || host.endsWith('.example.test') || host.endsWith('.example');
+}
+
+// Web addresses whose host is not allowed. Returns the host, so a report names it.
+function foreignHosts(text) {
+  return [...text.matchAll(/\bhttps?:\/\/([^\s/?#`'")\]\\]*)/gi)].map((m) => m[1]).filter((host) => !hostAllowed(host));
+}
+
+// An IPv4 address that is not private, loopback, link-local, or reserved for documentation.
+function isPublicIpv4(parts) {
+  const [a, b, c] = parts;
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
+  if (a === 169 && b === 254) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 192 && b === 0 && c === 2) return false;
+  if (a === 198 && b === 51 && c === 100) return false;
+  if (a === 203 && b === 0 && c === 113) return false;
+  return true;
+}
+
+function publicIpv4(text) {
+  const found = [];
+  for (const match of text.matchAll(/(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.]*\d)/g)) {
+    const parts = match.slice(1, 5).map(Number);
+    if (parts.every((part) => part <= 255) && isPublicIpv4(parts)) found.push(match[0]);
+  }
+  return found;
+}
+
+// ---- The checks, applied to the real files ----
+
+test('README.md and docs/SUBMISSION.md hold the exact demo address marker', () => {
+  for (const file of ['README.md', 'docs/SUBMISSION.md']) {
+    assert.ok(read(file).includes(DEMO_MARKER), `${file} must contain ${DEMO_MARKER}`);
+  }
+});
+
+test('the documents and .kiro/ hold no public IP address', () => {
+  const findings = [];
+  for (const file of judgeFiles()) {
+    read(relative(file))
+      .split(/\r?\n/)
+      .forEach((line, index) => {
+        for (const ip of publicIpv4(line)) findings.push(`${relative(file)}:${index + 1}: ${ip}`);
+      });
+  }
+  assert.deepEqual(findings, []);
+});
+
+test('the documents and .kiro/ hold no web address of a real demo', () => {
+  const findings = [];
+  for (const file of judgeFiles()) {
+    read(relative(file))
+      .split(/\r?\n/)
+      .forEach((line, index) => {
+        for (const host of foreignHosts(line)) findings.push(`${relative(file)}:${index + 1}: ${host}`);
+      });
+  }
+  assert.deepEqual(findings, []);
+});
+
+// Segment lines look like: ### 01:10 to 01:35 (25 s): Start the video meeting
+function scriptSegments(text) {
+  return [...text.matchAll(/^### (\d\d):(\d\d) to (\d\d):(\d\d) \((\d+) s\): (.+)$/gm)].map((m) => ({
+    title: m[6].trim(),
+    start: Number(m[1]) * 60 + Number(m[2]),
+    end: Number(m[3]) * 60 + Number(m[4]),
+    length: Number(m[5]),
+  }));
+}
+
+test('the demo script adds up to 180 seconds or less, and its own numbers agree', () => {
+  const text = read('docs/DEMO-SCRIPT.md');
+  const segments = scriptSegments(text);
+  assert.ok(segments.length >= 5, 'the script has its segments');
+
+  for (const segment of segments) {
+    assert.equal(segment.end - segment.start, segment.length, `${segment.title}: the clock times and the length differ`);
+  }
+  segments.slice(1).forEach((segment, index) => {
+    assert.equal(segment.start, segments[index].end, `${segment.title} does not start where the previous segment ends`);
+  });
+
+  const total = segments.reduce((sum, segment) => sum + segment.length, 0);
+  assert.ok(total <= MAX_SCRIPT_SECONDS, `the script is ${total} s, the limit is ${MAX_SCRIPT_SECONDS} s`);
+
+  assert.match(text, new RegExp(`add up to ${total} seconds`), 'the introduction states the real total');
+  assert.match(text, new RegExp(`\\*\\*Total\\*\\* \\| \\*\\*${total} s\\*\\*`), 'the table states the real total');
+  for (const segment of segments) {
+    assert.ok(
+      new RegExp(`\\| ${segment.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\| ${segment.length} s \\|`).test(text),
+      `the table row of "${segment.title}" is missing or differs`
+    );
+  }
+});
+
+// ---- The external forbidden-word list ----
+
+const LIST_FILE = resolveForbiddenWordsFile();
+const LISTED = loadForbiddenWords(LIST_FILE);
+const NO_LIST = LISTED.length === 0;
+if (NO_LIST) {
+  console.warn(
+    'judge-docs: no forbidden-word list configured, so the term check is skipped. ' +
+      'Set FORBIDDEN_WORDS_FILE or create scripts/forbidden-words.local.txt.'
+  );
+}
+
+test('the documents and .kiro/ hold no term of the external list', { skip: NO_LIST ? 'no forbidden-word list configured' : false }, () => {
+  // The report names the file and the line, never the term.
+  const findings = [];
+  for (const file of judgeFiles()) {
+    termLines(read(relative(file)), LISTED).forEach((line) => findings.push(`${relative(file)}:${line}`));
+  }
+  assert.deepEqual(findings, []);
+});
+
+// Line numbers (1-based) of the lines that hold a term. Matching ignores case.
+function termLines(text, terms) {
+  return text
+    .split(/\r?\n/)
+    .map((line, index) => (terms.some((term) => line.toLowerCase().includes(term)) ? index + 1 : 0))
+    .filter(Boolean);
+}
+
+test('the term check finds a term in any letter case and reports line numbers only', () => {
+  assert.deepEqual(termLines('fine\nan Invented-Term here\nfine', ['invented-term']), [2]);
+  assert.deepEqual(termLines('fine\nstill fine', ['invented-term']), []);
+});
+
+// ---- The checkers themselves ----
+
+test('the address checks flag a real-looking host and a public IP, and allow the agreed ones', () => {
+  const web = (host, rest = '/') => `${['https', ''].join(':')}//${host}${rest}`;
+  const plain = (host) => `${['http', ''].join(':')}//${host}`;
+  assert.deepEqual(foreignHosts(`see ${web('demo.some-clinic.org', '/app')}`), ['demo.some-clinic.org']);
+  assert.deepEqual(foreignHosts(`see ${plain('203.0.115.9:8080')}`), ['203.0.115.9:8080']);
+  assert.deepEqual(
+    foreignHosts(
+      [
+        web('demo.example.test'),
+        web('meet.demo.example.test', '/x'),
+        web('jitsi.clinic.example'),
+        plain('127.0.0.1:3000'),
+        plain('localhost'),
+        web('<host>', '/api'),
+        web('download.jitsi.org'),
+        'a bare `http://` or `https://` address',
+      ].join(' ')
+    ),
+    []
+  );
+
+  assert.deepEqual(publicIpv4('server at 8.8.8.8 and 1.1.1.1'), ['8.8.8.8', '1.1.1.1']);
+  assert.deepEqual(publicIpv4('local 10.0.0.5 127.0.0.1 192.168.1.4 172.16.0.1 172.31.255.1 0.0.0.0'), []);
+  assert.deepEqual(publicIpv4('documentation 192.0.2.10 198.51.100.7 203.0.113.9 169.254.1.1'), []);
+  assert.deepEqual(publicIpv4('172.32.0.1'), ['172.32.0.1']);
+  assert.deepEqual(publicIpv4('version 1.2.3 and 1.2.3.4.5 and 999.1.1.1'), []);
+});
+
+test('the script reader finds the segments and their lengths', () => {
+  const sample = '### 00:00 to 00:10 (10 s): Title\n\ntext\n\n### 00:10 to 00:25 (15 s): The idea\n';
+  assert.deepEqual(scriptSegments(sample), [
+    { title: 'Title', start: 0, end: 10, length: 10 },
+    { title: 'The idea', start: 10, end: 25, length: 15 },
+  ]);
+});

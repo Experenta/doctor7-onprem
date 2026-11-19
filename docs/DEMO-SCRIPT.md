@@ -11,6 +11,8 @@ lists its clock time, its length, what is on screen, and the voice-over.
   requests that the sign-in route allows per 15 minutes from one IP address. A recording
   that signs in more often can hit the limit and show `429`. Wait 15 minutes, or record
   from another network, before you start again.
+- Keep the Professional window open, with the meeting started. The Client signs in in a
+  second window or a private window, so the two sessions do not replace each other.
 - Pick an appointment with status Scheduled, where the Professional account is the
   professional and the Client account is the client. The chat opens only for scheduled
   appointments.
@@ -54,9 +56,9 @@ appointment page shows the video panel and the chat."
 
 On screen: press "Start video meeting". The Jitsi room loads inside the page.
 
-Voice-over: "The server creates the meeting and the page embeds the room. The demo uses a
-self-hosted Jitsi server. A real audio and video call between two people has not been
-verified."
+Voice-over: "The server creates the meeting, stores it with the appointment, and the page
+embeds the room. The demo uses a self-hosted Jitsi server. A real audio and video call
+between two people has not been verified."
 
 ### 01:35 to 01:55 (20 s): Chat
 
@@ -68,11 +70,14 @@ chat is open only while the appointment is scheduled."
 
 ### 01:55 to 02:15 (20 s): Client account
 
-On screen: sign out. Sign in with the account labelled Client. Open the same appointment.
+On screen: open a second window or a private window and sign in with the account labelled
+Client. Open the same appointment. The video panel shows the same Jitsi room that the
+Professional started.
 
-Voice-over: "The client sees their own appointments and records, and can chat. The video
-panel says that the professional starts the meeting. Access is denied by default, and
-each request is checked for its role and for the record."
+Voice-over: "The client opens the same appointment in a second window and enters the same
+room, because the server stores the meeting with the appointment. If the professional had
+not started it, the panel would say so and ask again every 15 seconds. Access is denied by
+default, and each request is checked for its role and for the record."
 
 ### 02:15 to 02:35 (20 s): Auditor account
 

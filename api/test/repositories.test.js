@@ -145,11 +145,11 @@ test('createRepository rejects identifiers that are not plain names', async () =
   assert.throws(() => createRepository(db, { table: 'users', columns: ['name'] }), TypeError);
 });
 
-test('createRepositories exposes exactly the six tables', () => {
+test('createRepositories exposes exactly the seven tables', () => {
   const repos = createRepositories(recordingDb());
   assert.deepEqual(
     Object.keys(repos).sort(),
-    ['appointments', 'audit_log', 'centers', 'chat_messages', 'consultations', 'users']
+    ['appointments', 'audit_log', 'centers', 'chat_messages', 'consultations', 'meetings', 'users']
   );
-  assert.equal(TABLE_SPECS.length, 6);
+  assert.equal(TABLE_SPECS.length, 7);
 });

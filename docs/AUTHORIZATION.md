@@ -76,11 +76,30 @@ every rule is scoped to a center. Nobody crosses centers, whatever the effect.
 | auditor | audit | read | center |
 | auditor | audit | create | none |
 | auditor | audit | update | none |
+| professional | meeting | read | own |
+| professional | meeting | create | own |
+| professional | meeting | update | none |
+| client | meeting | read | own |
+| client | meeting | create | none |
+| client | meeting | update | none |
+| admin | meeting | read | none |
+| admin | meeting | create | none |
+| admin | meeting | update | none |
+| auditor | meeting | read | none |
+| auditor | meeting | create | none |
+| auditor | meeting | update | none |
 
 The test `api/src/authz/policy.test.js` holds a hand-written copy of this table.
 It checks every row against `can()` (an allowed and a denied case for each
-effect), checks that this file lists the same 36 rows, and fails if either
-differs from `MATRIX` in `policy.js`.
+effect), checks that this file lists the same 48 rows, and fails if either
+differs from `MATRIX` in `policy.js`. A property test reads this table and checks,
+for any role, any participation in the appointment, and any pair of centers, that
+`can()` decides what the table says.
+
+The `meeting` resource is the video meeting of an appointment. It takes its center
+and participants from the appointment, like a consultation. The professional of the
+appointment reads and creates it, the client of the appointment reads it, and nobody
+else has a cell. An administrator can read the appointment, but not its meeting.
 
 ### Choices where the rules were silent
 
@@ -104,6 +123,13 @@ only with a decision from the product owner.
 | POST | `/appointments` | appointment create | professional, admin |
 | POST | `/consultations` | consultation create | professional |
 | GET | `/consultations/:id` | consultation read | professional, client, admin |
+| POST | `/appointments/:id/meeting` | meeting create (the gate checks appointment update) | professional |
+| GET | `/appointments/:id/meeting` | meeting read | professional and client in the matrix. The gate admits every role. |
+
+The gate admits every role on `GET /appointments/:id/meeting` on purpose (the rule
+has `anyRole`). The handler checks the meeting with `can()`, so an administrator or an
+auditor gets the same `404` as a user who cannot read the appointment. A `403` there
+would tell them that a meeting route exists for that record.
 
 Public routes are outside the gate: `/healthz`, `/readyz`, and the `/auth`
 routes. Any other path or method answers `403`, including `HEAD`, `OPTIONS`,
@@ -122,6 +148,12 @@ routes. Any other path or method answers `403`, including `HEAD`, `OPTIONS`,
   `professional` and `client`. A missing user, a user of another center, and a
   user with the wrong role all give the same `403`.
 - `POST /consultations` takes the center and participants from the appointment.
+- `GET /appointments/:id/meeting` answers `200` to the professional and the client of
+  the appointment, `404 no_meeting` when the meeting does not exist yet, and the usual
+  `404 not_found` to everyone else, including the administrator and the auditor of the
+  center. `POST /appointments/:id/meeting` answers `404` when the caller
+  cannot read the appointment, `403` to a reader who is not its professional, and `409` when
+  the appointment is not scheduled.
 
 ## Content type
 

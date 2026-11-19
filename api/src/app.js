@@ -9,6 +9,7 @@ const { createAuthzGate } = require('./authz/gate');
 const { createCare } = require('./care');
 const { createAudit } = require('./audit');
 const { createVideo, loadVideoConfig } = require('./video');
+const { createMemoryMeetingStore } = require('./video/memoryStore');
 const { loadSecurityConfig } = require('./security/config');
 const { createSecurityHeaders } = require('./security/headers');
 const { createCsrfGuard } = require('./security/csrf');
@@ -26,7 +27,9 @@ const LOGIN_PATHS = ['/auth/login', '/auth/callback'];
 // routes are not mounted. `careStore` replaces the SQL store for appointments
 // and consultations, which tests do. `auditStore` replaces the SQL store for
 // the audit log, which tests do. `video` holds `config`, the result of
-// loadVideoConfig. When it is missing, the config is read from process.env, and
+// loadVideoConfig, and optionally `meetingStore`. When `meetingStore` is missing, the
+// meetings use the SQL store, or an in-memory store when `careStore` is replaced.
+// When `config` is missing, the config is read from process.env, and
 // an invalid VIDEO_PROVIDER stops startup. `security` holds the result of
 // loadSecurityConfig (allowed origins, Jitsi origin, sign-in and write limits).
 // When it is missing, it is read from process.env.
@@ -91,6 +94,8 @@ function createApp({
       createVideo({
         db,
         store: careStore,
+        // With a replaced care store there is no real database, so the meetings stay in memory.
+        meetingStore: (videoOptions && videoOptions.meetingStore) || (careStore ? createMemoryMeetingStore() : undefined),
         audit,
         config: (videoOptions && videoOptions.config) || loadVideoConfig(process.env),
         logger,

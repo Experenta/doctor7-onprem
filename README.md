@@ -26,14 +26,21 @@ The steps for reviewers are in `docs/SUBMISSION.md`, under "How to try it".
 
 - Professionals schedule appointments, start the video meeting of an appointment,
   write consultation notes, and chat with their client.
-- Clients see their own appointments and consultation records, and chat with their
-  professional.
+- Clients see their own appointments and consultation records, join the video meeting
+  that their professional started, and chat with their professional.
 - Administrators see every appointment of their center and schedule new ones.
 - Auditors read the audit log of their center. The log records who did what. It holds
   no clinical text.
 
 Each appointment has one chat between its professional and its client. The chat stays
 open only while the appointment is scheduled.
+
+Each appointment also has one stored video meeting. The professional starts it, and the
+server keeps it with the appointment. The client opens the same appointment and enters
+the same room. To see this in the demo, sign in as the Professional and start the meeting,
+then open a second window or a private window, sign in as the Client with the demonstration
+account, and open the same appointment. The client's page asks again every 15 seconds until
+the professional has started the meeting.
 
 Access is denied by default. A route with no rule answers `403`. Each request also
 passes a role check and a check of the record itself. See `docs/AUTHORIZATION.md`.

@@ -39,6 +39,10 @@ test('in process, the full run passes all seven steps and prints no secret or ad
   assert.equal(code, 0, sink.out);
   assert.equal(linesMatching(sink.out, /^OK   \d\/7 /).length, 7, sink.out);
   assert.match(sink.out, /Result: PASS \(7 of 7 steps run passed\)/);
+  assert.match(
+    sink.out,
+    /OK   3\/7 video meeting: meeting created, provider (meet|jitsi); the client reads the same room; a repeated request returns it unchanged/
+  );
   assert.match(sink.out, /smoke-/);
   assertNoLeak(sink.out);
   assertNoLeak(sink.err);
@@ -216,6 +220,89 @@ test('a session is issued when the callback sets a value that is not removed', (
   assert.equal(issuedSession(['d7_login=; Max-Age=0; Path=/auth', 'd7_session=abc; Path=/']), true);
   assert.equal(issuedSession(['d7_login=; Max-Age=0; Path=/auth']), false);
   assert.equal(issuedSession([]), false);
+});
+
+// Step 3 (video meeting), checked by name. The professional creates the meeting. The client
+// must read the same provider and address, and a second POST must answer 200 with the same
+// address. A meeting stored in memory by the in-process stack backs all three requests.
+const withFetch = async (answers, run) => {
+  const original = global.fetch;
+  const seen = [];
+  global.fetch = async (url, init = {}) => {
+    seen.push(`${init.method || 'GET'} ${new URL(url).pathname}`);
+    const answer = answers.shift();
+    return new Response(JSON.stringify(answer.json), { status: answer.status, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    return await run(seen);
+  } finally {
+    global.fetch = original;
+  }
+};
+
+function videoContext() {
+  const jar = { headerFor: () => '', store: () => {} };
+  return {
+    origin: 'http://127.0.0.1:1',
+    appointmentId: 'a1',
+    api: (route) => `http://127.0.0.1:1${route}`,
+    people: { professional: { id: 'p', jar }, client: { id: 'c', jar } },
+  };
+}
+
+const ROOM = { provider: 'jitsi', url: 'https://jitsi.example.test/doctor7-room' };
+const videoStep = STEPS.find((step) => step.name === 'video meeting');
+
+test('the video step checks that the client reads the same room and that a repeated POST is idempotent', async () => {
+  const ctx = videoContext();
+  const detail = await withFetch(
+    [{ status: 201, json: ROOM }, { status: 200, json: ROOM }, { status: 200, json: ROOM }],
+    async (seen) => {
+      const text = await videoStep.run(ctx);
+      assert.deepEqual(seen, [
+        'POST /appointments/a1/meeting',
+        'GET /appointments/a1/meeting',
+        'POST /appointments/a1/meeting',
+      ]);
+      return text;
+    }
+  );
+  assert.match(detail, /^meeting created, provider jitsi; the client reads the same room/);
+  assert.equal(ctx.meetingProvider, 'jitsi');
+  assertNoLeak(detail);
+});
+
+test('the video step fails by name when the client gets another address, another provider, or no meeting', async () => {
+  const cases = [
+    [{ status: 200, json: { ...ROOM, url: 'https://jitsi.example.test/doctor7-other' } }, /the client did not get the same provider and address/],
+    [{ status: 200, json: { provider: 'meet', url: ROOM.url } }, /the client did not get the same provider and address/],
+    [{ status: 404, json: { error: { code: 'no_meeting', message: 'x' } } }, /the client could not read the meeting \(HTTP 404, no_meeting\)/],
+  ];
+  for (const [clientAnswer, expected] of cases) {
+    await withFetch([{ status: 201, json: ROOM }, clientAnswer], async () => {
+      await assert.rejects(videoStep.run(videoContext()), (err) => {
+        assert.ok(err instanceof SmokeFailure);
+        assert.match(err.message, expected);
+        assertNoLeak(err.message);
+        return true;
+      });
+    });
+  }
+});
+
+test('the video step fails by name when the repeated POST is not a 200 with the same address', async () => {
+  const cases = [
+    [{ status: 201, json: ROOM }, /the repeated request did not answer 200 \(HTTP 201, none\)/],
+    [{ status: 200, json: { ...ROOM, url: 'https://jitsi.example.test/doctor7-new' } }, /the repeated request did not return the same meeting/],
+  ];
+  for (const [repeatAnswer, expected] of cases) {
+    await withFetch([{ status: 201, json: ROOM }, { status: 200, json: ROOM }, repeatAnswer], async () => {
+      await assert.rejects(videoStep.run(videoContext()), (err) => {
+        assert.match(err.message, expected);
+        return true;
+      });
+    });
+  }
 });
 
 test('the steps keep their order, and every dependency points at an earlier step', () => {

@@ -11,17 +11,19 @@
 // A cell that is missing means the action is denied.
 
 const ROLES = Object.freeze(['professional', 'client', 'admin', 'auditor']);
-const RESOURCES = Object.freeze(['appointment', 'consultation', 'audit']);
+const RESOURCES = Object.freeze(['appointment', 'consultation', 'audit', 'meeting']);
 const ACTIONS = Object.freeze(['read', 'create', 'update']);
 
 const MATRIX = deepFreeze({
   professional: {
     appointment: { read: 'own', create: 'own', update: 'own' },
     consultation: { read: 'own', create: 'own', update: 'own' },
+    meeting: { read: 'own', create: 'own' },
   },
   client: {
     appointment: { read: 'own' },
     consultation: { read: 'own' },
+    meeting: { read: 'own' },
   },
   admin: {
     appointment: { read: 'center', create: 'center', update: 'center' },

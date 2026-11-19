@@ -8,6 +8,7 @@ const { createApp } = require('../app');
 const { createMemoryAuthStore } = require('../auth/memoryStore');
 const { createMemoryCareStore } = require('../care/memoryStore');
 const { createMemoryAuditStore } = require('../audit/memoryStore');
+const { createMemoryMeetingStore } = require('./memoryStore');
 const { USERS, APPOINTMENTS, AUTH_CONFIG } = require('../audit/harness');
 const { fakeDb, listen } = require('../../test/helpers');
 const { createMockGoogle } = require('../../../tools/mock-google/server');
@@ -53,6 +54,7 @@ async function startVideoApi({ env = {}, googleMode = 'ok' } = {}) {
   const logger = capturingLogger();
   const auditStore = createMemoryAuditStore();
   const careStore = createMemoryCareStore({ users: USERS, appointments: APPOINTMENTS, consultations: [] });
+  const meetingStore = createMemoryMeetingStore();
   const authStore = createMemoryAuthStore({ users: USERS });
   const app = createApp({
     db: fakeDb(),
@@ -61,7 +63,7 @@ async function startVideoApi({ env = {}, googleMode = 'ok' } = {}) {
     auth: { config: AUTH_CONFIG, store: authStore, oidc: {} },
     careStore,
     auditStore,
-    video: { config },
+    video: { config, meetingStore },
   });
   const tokens = {};
   for (const user of USERS) {
@@ -100,6 +102,8 @@ async function startVideoApi({ env = {}, googleMode = 'ok' } = {}) {
     config,
     logger,
     auditStore,
+    careStore,
+    meetingStore,
     call,
     entries,
     async close() {

@@ -64,7 +64,7 @@ describe('Video', () => {
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     expect(container.querySelector('iframe')).toBeNull();
-    const post = calls.find((call) => call.path === '/appointments/a1/meeting');
+    const post = calls.find((call) => call.method === 'POST' && call.path === '/appointments/a1/meeting');
     expect(post.init.headers['Content-Type']).toBe('application/json');
   });
 
@@ -112,11 +112,27 @@ describe('Video', () => {
     const first = page({}, 'client');
     await screen.findByRole('heading', { name: 'Appointment' });
     expect(screen.queryByRole('button', { name: 'Start video meeting' })).not.toBeInTheDocument();
-    expect(screen.getByText(/starts the video meeting/)).toBeInTheDocument();
+    expect(await screen.findByText(/Your professional has not started the meeting yet/)).toBeInTheDocument();
     first.unmount();
     page({}, 'admin');
     await screen.findByRole('heading', { name: 'Appointment' });
     expect(screen.queryByRole('button', { name: 'Start video meeting' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Video consultation' })).not.toBeInTheDocument();
+  });
+
+  it('asks for the stored meeting when the appointment opens, and shows it without a start button', async () => {
+    const jitsiUrl = videoUrl('jitsi.example.test', '/doctor7-stored');
+    const { calls } = page({ 'GET /appointments/a1/meeting': ok({ provider: 'jitsi', url: jitsiUrl }) });
+    const frame = await screen.findByTitle('Video consultation');
+    expect(frame).toHaveAttribute('src', jitsiUrl);
+    expect(screen.queryByRole('button', { name: 'Start video meeting' })).not.toBeInTheDocument();
+    expect(calls.filter((call) => call.method === 'GET' && call.path === '/appointments/a1/meeting')).toHaveLength(1);
+  });
+
+  it('lets the client join the room the professional started', async () => {
+    const jitsiUrl = videoUrl('jitsi.example.test', '/doctor7-stored');
+    page({ 'GET /appointments/a1/meeting': ok({ provider: 'jitsi', url: jitsiUrl }) }, 'client');
+    expect(await screen.findByTitle('Video consultation')).toHaveAttribute('src', jitsiUrl);
   });
 });
 
@@ -190,7 +206,7 @@ describe('Chat', () => {
     page();
     await screen.findByRole('heading', { name: 'Chat' });
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('Connecting to the chat.');
+    expect(screen.getByText('Connecting to the chat.')).toHaveAttribute('role', 'status');
   });
 
   it('explains a closed appointment and offers no reconnect', async () => {

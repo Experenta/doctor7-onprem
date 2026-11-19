@@ -65,8 +65,8 @@ export default function AppointmentPage() {
             </dl>
           </section>
 
-          {user.role !== 'auditor' && (
-            <VideoPanel appointmentId={appointment.id} canStart={isProfessional} />
+          {(isProfessional || user.role === 'client') && (
+            <VideoPanel appointmentId={appointment.id} canStart={isProfessional} appointmentStatus={appointment.status} />
           )}
 
           {canChat && appointment.status === 'scheduled' && (

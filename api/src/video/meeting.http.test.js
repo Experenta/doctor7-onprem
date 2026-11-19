@@ -83,11 +83,14 @@ for (const [mode, reason] of Object.entries(FAILURES)) {
   });
 }
 
-test('failover applies to the new meeting only, and the next request tries Meet again', async () => {
+test('failover applies to the new meeting only, and the next new meeting tries Meet again', async () => {
   await withApi({}, async (api) => {
     const first = await api.call('POST', MEETING, { as: 'u-pro1', body: {} });
+    // A stored meeting is never moved, so each new meeting needs the previous one gone.
+    api.meetingStore.deleteForAppointment('a1');
     api.google.mode = 'http_500';
     const second = await api.call('POST', MEETING, { as: 'u-pro1', body: {} });
+    api.meetingStore.deleteForAppointment('a1');
     api.google.mode = 'ok';
     const third = await api.call('POST', MEETING, { as: 'u-pro1', body: {} });
     assert.deepEqual([first.json.provider, second.json.provider, third.json.provider], ['meet', 'jitsi', 'meet']);
@@ -197,8 +200,8 @@ test('other methods and a body that picks the provider are refused', async () =>
     assert.equal(picked.status, 400);
     assert.equal(picked.json.error.code, 'invalid_request');
     assert.equal(api.entries('meeting.create_').length, 0);
-    // The gate has no rule for GET on this path.
-    assert.equal((await api.call('GET', MEETING, { as: 'u-pro1' })).status, 403);
+    // The gate has no rule for DELETE on this path.
+    assert.equal((await api.call('DELETE', MEETING, { as: 'u-pro1' })).status, 403);
   });
 });
 
@@ -222,6 +225,7 @@ test('the credential appears in no response, log line, or audit entry', async ()
     const outputs = [];
     for (const mode of ['ok', ...Object.keys(FAILURES)]) {
       api.google.mode = mode;
+      api.meetingStore.deleteForAppointment('a1');
       const res = await api.call('POST', MEETING, { as: 'u-pro1', body: {} });
       outputs.push(res.text, JSON.stringify([...res.headers]));
     }

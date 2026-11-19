@@ -11,7 +11,7 @@ const path = require('node:path');
 const fc = require('fast-check');
 const { can, listScope, ROLES, RESOURCES, ACTIONS, MATRIX, rolesFor } = require('./policy');
 
-// [role, resource, action, effect]. 4 roles x 3 resources x 3 actions = 36 cells.
+// [role, resource, action, effect]. 4 roles x 4 resources x 3 actions = 48 cells.
 const CELLS = [
   ['professional', 'appointment', 'read', 'own'],
   ['professional', 'appointment', 'create', 'own'],
@@ -52,6 +52,19 @@ const CELLS = [
   ['auditor', 'audit', 'read', 'center'],
   ['auditor', 'audit', 'create', 'none'],
   ['auditor', 'audit', 'update', 'none'],
+
+  ['professional', 'meeting', 'read', 'own'],
+  ['professional', 'meeting', 'create', 'own'],
+  ['professional', 'meeting', 'update', 'none'],
+  ['client', 'meeting', 'read', 'own'],
+  ['client', 'meeting', 'create', 'none'],
+  ['client', 'meeting', 'update', 'none'],
+  ['admin', 'meeting', 'read', 'none'],
+  ['admin', 'meeting', 'create', 'none'],
+  ['admin', 'meeting', 'update', 'none'],
+  ['auditor', 'meeting', 'read', 'none'],
+  ['auditor', 'meeting', 'create', 'none'],
+  ['auditor', 'meeting', 'update', 'none'],
 ];
 
 const EXPECTED = new Map(CELLS.map(([role, resource, action, effect]) => [`${role}/${resource}/${action}`, effect]));
@@ -157,6 +170,64 @@ test('docs/AUTHORIZATION.md lists every cell with the same effect', () => {
   const documented = new Map(rows.map((m) => [`${m[1]}/${m[2]}/${m[3]}`, m[4]]));
   assert.equal(rows.length, CELLS.length, 'the matrix table must have one row per cell');
   assert.deepEqual([...documented].sort(), [...EXPECTED].sort());
+});
+
+test('property: can() equals the matrix written in docs/AUTHORIZATION.md for any role, participation, and center', () => {
+  const file = path.join(__dirname, '..', '..', '..', 'docs', 'AUTHORIZATION.md');
+  const rows = [...fs.readFileSync(file, 'utf8').matchAll(/^\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(own|center|none)\s*\|\s*$/gm)];
+  const documented = new Map(rows.map((m) => [`${m[1]}/${m[2]}/${m[3]}`, m[4]]));
+  assert.ok(documented.size >= 48, 'the document lists the whole matrix');
+
+  const participation = fc.constantFrom('professional', 'client', 'both', 'none');
+  fc.assert(
+    fc.property(
+      fc.constantFrom(...ROLES),
+      fc.constantFrom(...RESOURCES),
+      fc.constantFrom(...ACTIONS),
+      participation,
+      fc.constantFrom('c1', 'c2'),
+      fc.constantFrom('c1', 'c2'),
+      (role, type, action, takesPart, userCenter, resourceCenter) => {
+        const user = { id: 'u-me', email: 'me@example.test', displayName: 'Me', role, centerId: userCenter };
+        const resource = {
+          type,
+          centerId: resourceCenter,
+          professionalId: takesPart === 'professional' || takesPart === 'both' ? 'u-me' : 'u-other',
+          clientId: takesPart === 'client' || takesPart === 'both' ? 'u-me' : 'u-other',
+        };
+        // The document says: nobody crosses centers. "own" means the professional of the
+        // appointment (role professional) or its client (role client). "center" needs the
+        // same center only. "none" is always denied.
+        const effect = documented.get(`${role}/${type}/${action}`);
+        let expected = false;
+        if (effect !== 'none' && userCenter === resourceCenter) {
+          expected =
+            effect === 'center' ||
+            (role === 'professional' && resource.professionalId === 'u-me') ||
+            (role === 'client' && resource.clientId === 'u-me');
+        }
+        assert.equal(can(user, action, resource), expected, `${role}/${type}/${action} ${takesPart} ${userCenter}/${resourceCenter}`);
+      }
+    ),
+    { numRuns: 3000 }
+  );
+});
+
+test('the meeting resource: the professional reads and creates their own, the client reads their own, nobody else has a cell', () => {
+  const meeting = { type: 'meeting', centerId: 'c1', professionalId: 'u-pro', clientId: 'u-cli' };
+  const as = (role, id, centerId = 'c1') => ({ id, role, centerId });
+  assert.equal(can(as('professional', 'u-pro'), 'read', meeting), true);
+  assert.equal(can(as('professional', 'u-pro'), 'create', meeting), true);
+  assert.equal(can(as('professional', 'u-pro'), 'update', meeting), false);
+  assert.equal(can(as('client', 'u-cli'), 'read', meeting), true);
+  assert.equal(can(as('client', 'u-cli'), 'create', meeting), false);
+  assert.equal(can(as('professional', 'u-other'), 'read', meeting), false);
+  assert.equal(can(as('client', 'u-other'), 'read', meeting), false);
+  assert.equal(can(as('admin', 'u-adm'), 'read', meeting), false);
+  assert.equal(can(as('auditor', 'u-aud'), 'read', meeting), false);
+  assert.equal(can(as('professional', 'u-pro', 'c2'), 'read', meeting), false);
+  assert.deepEqual(rolesFor('meeting', 'read'), ['professional', 'client']);
+  assert.deepEqual(rolesFor('meeting', 'create'), ['professional']);
 });
 
 test('the policy fails closed for malformed users and resources', () => {
