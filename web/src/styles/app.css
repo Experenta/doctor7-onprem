@@ -1393,6 +1393,20 @@ a:hover {
   }
 }
 
+/* From 720 to 1099 px the list hides its Ends column, which the appointment detail shows,
+   and uses tighter horizontal cell padding. Without this, the table is wider than its
+   card and the Open action is cut off. Under 720 px the table stacks and keeps every column. */
+@media (min-width: 720px) and (max-width: 1099px) {
+  .appt-table th,
+  .appt-table td {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+  .appt-table .col-ends {
+    display: none;
+  }
+}
+
 /* ---------- Week view ---------- */
 .week-nav {
   display: flex;
