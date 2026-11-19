@@ -500,3 +500,52 @@ describe('screens of K-32', () => {
     expect(body).toMatch(/max-width:\s*8rem/);
   });
 });
+
+
+describe('appointment list of K-33', () => {
+  const appointmentsSource = readFileSync(join(SRC, 'pages', 'Appointments.jsx'), 'utf8');
+  // The block that applies from 720 to 1099 px. Its closing brace is the first "}" at the start of a line.
+  const rangeMatch = css.match(/@media \(min-width: 720px\) and \(max-width: 1099px\) \{([\s\S]*?)\n\}/);
+  const range = rangeMatch ? rangeMatch[1] : '';
+  const rangeRules = [...range.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({
+    selector: selector.trim(),
+    body,
+  }));
+
+  it('marks the Ends header and cells with the col-ends class, and keeps the Actions column last', () => {
+    expect(appointmentsSource).toMatch(/<th scope="col" className="col-ends">\s*Ends\s*<\/th>/);
+    expect(appointmentsSource).toMatch(/<td data-label="Ends" className="cell-end col-ends">/);
+    expect(appointmentsSource.match(/col-ends/g)).toHaveLength(2);
+    expect(appointmentsSource.indexOf('data-label="Actions"')).toBeGreaterThan(appointmentsSource.indexOf('data-label="Ends"'));
+  });
+
+  it('hides the Ends column with CSS, and not with the hidden attribute or an inline style', () => {
+    expect(rangeMatch, 'the 720 to 1099 px block exists').not.toBeNull();
+    expect(rangeRules.find((rule) => rule.selector === '.appt-table .col-ends')?.body).toMatch(/display:\s*none/);
+    expect(appointmentsSource).not.toMatch(/\shidden[\s/>=]/);
+    expect(appointmentsSource).not.toMatch(/style=\{\{/);
+  });
+
+  it('applies the hiding only from 720 to 1099 px, so the stacked layout keeps every column', () => {
+    const outside = css.replace(rangeMatch[0], '');
+    const hides = [...outside.matchAll(/\.col-ends\s*\{[^}]*display:\s*none/g)];
+    expect(hides).toEqual([]);
+    expect(css).toMatch(/@media \(max-width: 719px\) \{/);
+  });
+
+  it('tightens the horizontal padding of the list cells in the same range', () => {
+    const cells = rangeRules.find(
+      (rule) => rule.selector.split(',').map((part) => part.trim()).join(',') === '.appt-table th,.appt-table td',
+    );
+    expect(cells, 'the padding rule is in the range').toBeDefined();
+    expect(cells.body).toMatch(/padding-left:\s*var\(--space-2\)/);
+    expect(cells.body).toMatch(/padding-right:\s*var\(--space-2\)/);
+  });
+
+  it('keeps the wrapper scroll as a fallback; jsdom cannot measure the fit, so the project manager checks it in a browser', () => {
+    // jsdom does not lay out tables, so this test checks the rules that make the fit possible.
+    // The project manager measures the fit in a real browser.
+    expect(rulesFor('.table-wrap')[0].body).toMatch(/overflow-x:\s*auto/);
+    expect(range).not.toMatch(/\.table-wrap/);
+  });
+});

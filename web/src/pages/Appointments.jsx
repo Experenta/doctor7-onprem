@@ -68,7 +68,9 @@ function AppointmentTable({ groups }) {
         <thead>
           <tr>
             <th scope="col">Starts</th>
-            <th scope="col">Ends</th>
+            <th scope="col" className="col-ends">
+              Ends
+            </th>
             <th scope="col">Status</th>
             <th scope="col">Professional</th>
             <th scope="col">Client</th>
@@ -111,7 +113,7 @@ function GroupRows({ group, previous }) {
                 <Moment iso={item.startsAt} />
               </Link>
             </td>
-            <td data-label="Ends" className="cell-end">
+            <td data-label="Ends" className="cell-end col-ends">
               <Moment iso={item.endsAt} />
             </td>
             <td data-label="Status">
