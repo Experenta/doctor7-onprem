@@ -31,6 +31,7 @@ use Google Meet or Jitsi, selected through configuration.
 
 ```sh
 npm test                    # node --test "scripts/**/*.test.js" "api/**/*.test.js" "tools/**/*.test.js"
+npm run test:web            # web tests (Vitest): npm test --workspace=web
 node scripts/scan-secrets.js  # scan the files that would be committed
 ```
 

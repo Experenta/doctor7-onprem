@@ -1,0 +1,30 @@
+[Unit]
+Description=doctor7-onprem chat retention purge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=doctor7
+Group=doctor7
+EnvironmentFile=/etc/doctor7/api.env
+WorkingDirectory=/usr/lib/doctor7/api
+ExecStart=/usr/lib/doctor7/run-task.sh purge
+UMask=0077
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native

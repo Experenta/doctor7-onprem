@@ -1,0 +1,18 @@
+Package: doctor7-web
+Version: @VERSION@
+Section: web
+Priority: optional
+Architecture: all
+Depends: apache2 (>= 2.4)
+Recommends: doctor7-api
+Maintainer: doctor7-onprem maintainers <maintainers@example.org>
+Installed-Size: @INSTALLED_SIZE@
+Homepage: https://example.org/doctor7-onprem
+Description: doctor7-onprem web front end and Apache virtual host
+ Static files of the doctor7-onprem web application and an Apache virtual
+ host with TLS, security headers, a content security policy, and proxy rules
+ for /api and /ws.
+ .
+ The package enables the Apache modules it needs. It does not enable the site.
+ Set the values in /etc/doctor7/web.vars.conf, then run a2ensite doctor7. The
+ TLS certificate is not part of the package.

@@ -1,0 +1,18 @@
+# doctor7 backup settings. Read by doctor7-backup and doctor7-restore.
+# This file is shell syntax: NAME=value, no spaces around "=".
+# Keep it root-owned with mode 0600.
+
+# Directory for the archives. One subdirectory per layer is created inside it.
+# Keep it on a different disk than the server, or copy it off the server.
+BACKUP_DIR=/var/backups/doctor7
+
+# Name of the MariaDB database that the API uses.
+DB_NAME=doctor7
+
+# Client options file with the database host, user and password.
+# See /usr/share/doctor7/backup.cnf.example. Mode 0600.
+DB_DEFAULTS_FILE=/etc/doctor7/backup.cnf
+
+# Archives older than this many days are deleted after a successful backup.
+# Use 0 to keep everything.
+RETENTION_DAYS=30

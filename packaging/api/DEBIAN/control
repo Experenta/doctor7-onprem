@@ -1,0 +1,20 @@
+Package: doctor7-api
+Version: @VERSION@
+Section: web
+Priority: optional
+Architecture: all
+Depends: adduser, systemd
+Recommends: mariadb-client
+Suggests: doctor7-web
+Maintainer: doctor7-onprem maintainers <maintainers@example.org>
+Installed-Size: @INSTALLED_SIZE@
+Homepage: https://example.org/doctor7-onprem
+Description: doctor7-onprem API service
+ Node.js API of the doctor7-onprem psychological care platform, with its
+ production dependencies, a systemd unit, a daily chat purge timer, and
+ per-layer backup and restore tools.
+ .
+ The package does not install Node.js. The service uses the binary named by
+ NODE_BIN in /etc/doctor7/api.env, or /opt/node/current/bin/node, or node from
+ PATH. It must be version 22 or later. The database is not installed by this
+ package.

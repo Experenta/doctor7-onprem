@@ -1,0 +1,9 @@
+# MariaDB client options for the backup and restore scripts.
+# Copy to /etc/doctor7/backup.cnf, fill in the values, set mode 0600, owner root.
+# The user needs SELECT, SHOW VIEW, TRIGGER, EVENT and LOCK TABLES for backups.
+# Restores need more rights (CREATE, DROP, INSERT, ALTER, INDEX, REFERENCES).
+[client]
+host=
+port=3306
+user=
+password=

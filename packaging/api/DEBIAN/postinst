@@ -1,0 +1,54 @@
+#!/bin/sh
+set -e
+
+SERVICE_USER=doctor7
+ENV_DIR=/etc/doctor7
+ENV_FILE=/etc/doctor7/api.env
+BACKUP_CONF=/etc/doctor7/backup.conf
+SHARE_DIR=/usr/share/doctor7
+
+systemd_running() {
+  [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
+}
+
+case "$1" in
+  configure)
+    if ! getent passwd "$SERVICE_USER" >/dev/null 2>&1; then
+      adduser --system --group --home /var/lib/doctor7 --no-create-home "$SERVICE_USER"
+    fi
+
+    install -d -m 0755 -o root -g root "$ENV_DIR"
+
+    # Create the settings files from the templates. Never overwrite them.
+    if [ ! -e "$ENV_FILE" ]; then
+      install -m 0600 -o root -g root "$SHARE_DIR/api.env.example" "$ENV_FILE"
+    fi
+    if [ ! -e "$BACKUP_CONF" ]; then
+      install -m 0600 -o root -g root "$SHARE_DIR/backup.conf.example" "$BACKUP_CONF"
+    fi
+    # The settings can hold secrets. Keep the mode and owner right on every run.
+    chown root:root "$ENV_FILE" "$BACKUP_CONF"
+    chmod 0600 "$ENV_FILE" "$BACKUP_CONF"
+
+    if systemd_running; then
+      systemctl daemon-reload || true
+      systemctl enable doctor7-api.service doctor7-chat-purge.timer >/dev/null 2>&1 || true
+      if [ -n "$2" ]; then
+        # Upgrade: bring back what prerm stopped.
+        systemctl restart doctor7-api.service || true
+        systemctl start doctor7-chat-purge.timer || true
+      else
+        echo "doctor7-api: installed. Edit $ENV_FILE (DATABASE_URL is required)," >&2
+        echo "doctor7-api: run the migrations, then: systemctl start doctor7-api" >&2
+      fi
+    fi
+    ;;
+  abort-upgrade | abort-remove | abort-deconfigure)
+    ;;
+  *)
+    echo "postinst called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

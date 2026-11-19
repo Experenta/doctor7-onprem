@@ -1,0 +1,41 @@
+#!/bin/sh
+set -e
+
+VARS_FILE=/etc/doctor7/web.vars.conf
+SITE=doctor7
+MODULES="proxy proxy_http proxy_wstunnel headers rewrite deflate expires ssl"
+
+case "$1" in
+  configure)
+    install -d -m 0755 -o root -g root /etc/doctor7
+    if [ ! -e "$VARS_FILE" ]; then
+      install -m 0644 -o root -g root /usr/share/doctor7/web.vars.conf.example "$VARS_FILE"
+    fi
+
+    if command -v a2enmod >/dev/null 2>&1; then
+      # shellcheck disable=SC2086
+      a2enmod $MODULES >/dev/null
+    else
+      echo "doctor7-web: a2enmod was not found. Enable these Apache modules by hand: $MODULES" >&2
+    fi
+
+    if command -v a2query >/dev/null 2>&1 && a2query -s "$SITE" >/dev/null 2>&1; then
+      # The site is already enabled: apply the new files if the configuration is valid.
+      if apache2ctl configtest >/dev/null 2>&1; then
+        systemctl reload apache2 >/dev/null 2>&1 || true
+      else
+        echo "doctor7-web: the Apache configuration test failed. Fix it, then reload Apache." >&2
+      fi
+    else
+      echo "doctor7-web: installed. Edit $VARS_FILE, then run: a2ensite $SITE && apache2ctl configtest && systemctl reload apache2" >&2
+    fi
+    ;;
+  abort-upgrade | abort-remove | abort-deconfigure)
+    ;;
+  *)
+    echo "postinst called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

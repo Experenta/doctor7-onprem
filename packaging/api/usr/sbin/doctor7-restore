@@ -1,0 +1,131 @@
+#!/bin/bash
+# doctor7-restore: restore one layer from an archive made by doctor7-backup.
+#
+# Usage: doctor7-restore [--yes] <app|api|db|files> <archive>
+#
+# The restore overwrites the current state of the layer. The script asks for
+# confirmation unless --yes is given. It checks the .sha256 file when one sits
+# next to the archive. For api, files and db it stops the API service first and
+# starts it again afterwards, if it was running.
+set -euo pipefail
+umask 077
+
+CONF=${DOCTOR7_BACKUP_CONF:-/etc/doctor7/backup.conf}
+ASSUME_YES=no
+
+die() {
+  printf 'doctor7-restore: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  printf 'Usage: doctor7-restore [--yes] <app|api|db|files> <archive>\n' >&2
+  exit 2
+}
+
+if [ "${1:-}" = "--yes" ]; then
+  ASSUME_YES=yes
+  shift
+fi
+[ $# -eq 2 ] || usage
+LAYER=$1
+ARCHIVE=$2
+
+case $LAYER in
+  app | api | db | files) ;;
+  *) usage ;;
+esac
+
+[ "$(id -u)" -eq 0 ] || die "run as root."
+[ -f "$ARCHIVE" ] || die "archive not found: $ARCHIVE"
+
+if [ -f "$ARCHIVE.sha256" ]; then
+  (cd "$(dirname "$ARCHIVE")" && sha256sum --check --status "$(basename "$ARCHIVE").sha256") \
+    || die "the checksum does not match. The archive is damaged or was changed."
+else
+  printf 'doctor7-restore: warning: no .sha256 file next to the archive. Integrity is not checked.\n' >&2
+fi
+
+# A tar archive of a layer holds only relative paths without "..".
+check_tar_paths() {
+  local entry
+  tar -tzf "$ARCHIVE" > /dev/null || die "the archive cannot be read."
+  while IFS= read -r entry; do
+    case $entry in
+      /* | ../* | */../* | */.. | ..)
+        die "the archive holds an unsafe path. Nothing was restored."
+        ;;
+    esac
+  done < <(tar -tzf "$ARCHIVE")
+}
+
+case $LAYER in
+  db)
+    [ -r "$CONF" ] || die "cannot read $CONF."
+    # shellcheck source=/dev/null
+    . "$CONF"
+    [ -n "${DB_NAME:-}" ] || die "DB_NAME is not set in $CONF."
+    [ -r "${DB_DEFAULTS_FILE:-}" ] || die "cannot read DB_DEFAULTS_FILE from $CONF."
+    gzip -t "$ARCHIVE" || die "the archive is not a valid gzip file."
+    ;;
+  *)
+    check_tar_paths
+    ;;
+esac
+
+if [ "$ASSUME_YES" != yes ]; then
+  printf 'This replaces the current %s layer with %s.\nType "restore" to continue: ' "$LAYER" "$ARCHIVE" >&2
+  read -r answer
+  [ "$answer" = "restore" ] || die "cancelled."
+fi
+
+systemd_available() {
+  [ -d /run/systemd/system ] && command -v systemctl > /dev/null 2>&1
+}
+
+API_WAS_ACTIVE=no
+stop_api() {
+  if systemd_available && systemctl is-active --quiet doctor7-api.service; then
+    API_WAS_ACTIVE=yes
+    systemctl stop doctor7-api.service
+  fi
+}
+
+start_api() {
+  if [ "$API_WAS_ACTIVE" = yes ]; then
+    systemctl start doctor7-api.service
+  fi
+}
+
+case $LAYER in
+  app)
+    tar -C / --numeric-owner -xzf "$ARCHIVE"
+    if command -v apache2ctl > /dev/null 2>&1 && apache2ctl configtest > /dev/null 2>&1; then
+      systemctl reload apache2 || true
+    else
+      printf 'doctor7-restore: Apache configuration test failed or Apache is absent. Fix it, then reload Apache.\n' >&2
+    fi
+    ;;
+  api | files)
+    stop_api
+    tar -C / --numeric-owner -xzf "$ARCHIVE"
+    if systemd_available; then
+      systemctl daemon-reload || true
+    fi
+    start_api
+    ;;
+  db)
+    if command -v mariadb > /dev/null 2>&1; then
+      client=mariadb
+    elif command -v mysql > /dev/null 2>&1; then
+      client=mysql
+    else
+      die "db: the mariadb client was not found. Install mariadb-client."
+    fi
+    stop_api
+    gzip -dc "$ARCHIVE" | "$client" --defaults-extra-file="$DB_DEFAULTS_FILE" "$DB_NAME"
+    start_api
+    ;;
+esac
+
+printf 'doctor7-restore: %s restored from %s\n' "$LAYER" "$ARCHIVE"

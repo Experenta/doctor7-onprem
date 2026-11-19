@@ -1,0 +1,132 @@
+#!/bin/bash
+# doctor7-backup: back up one layer of a doctor7-onprem server, or all of them.
+#
+# Usage: doctor7-backup <app|api|db|files|all>
+#
+# Layers:
+#   app    Static web files, Apache virtual host, Apache variables
+#   api    API code with its dependencies, and /etc/doctor7/api.env (secrets)
+#   db     MariaDB dump of DB_NAME
+#   files  Application state directory /var/lib/doctor7
+#
+# Settings come from /etc/doctor7/backup.conf (override with DOCTOR7_BACKUP_CONF).
+# Archives are written with mode 0600 together with a .sha256 file. The api
+# archive holds secrets: store it encrypted if it leaves the server.
+set -euo pipefail
+umask 077
+
+CONF=${DOCTOR7_BACKUP_CONF:-/etc/doctor7/backup.conf}
+LAYERS="app api db files"
+
+die() {
+  printf 'doctor7-backup: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  printf 'Usage: doctor7-backup <app|api|db|files|all>\n' >&2
+  exit 2
+}
+
+[ $# -eq 1 ] || usage
+LAYER=$1
+
+[ "$(id -u)" -eq 0 ] || die "run as root."
+[ -r "$CONF" ] || die "cannot read $CONF. Create it from /usr/share/doctor7/backup.conf.example."
+
+# shellcheck source=/dev/null
+. "$CONF"
+
+BACKUP_DIR=${BACKUP_DIR:-}
+RETENTION_DAYS=${RETENTION_DAYS:-30}
+[ -n "$BACKUP_DIR" ] || die "BACKUP_DIR is not set in $CONF."
+case $RETENTION_DAYS in
+  '' | *[!0-9]*) die "RETENTION_DAYS in $CONF must be a whole number." ;;
+esac
+
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+
+# Writes a checksum file next to the archive and prunes old archives.
+finish() {
+  local layer=$1 file=$2 dir
+  dir=$(dirname "$file")
+  (cd "$dir" && sha256sum "$(basename "$file")" > "$(basename "$file").sha256")
+  chmod 0600 "$file" "$file.sha256"
+  if [ "$RETENTION_DAYS" -gt 0 ]; then
+    find "$dir" -maxdepth 1 -type f -name "$layer-*" -mtime "+$RETENTION_DAYS" -delete
+  fi
+  printf 'doctor7-backup: %s -> %s\n' "$layer" "$file"
+}
+
+# Archives the given absolute paths that exist. Fails when none exist.
+backup_paths() {
+  local layer=$1 dir file path existing=()
+  shift
+  dir="$BACKUP_DIR/$layer"
+  file="$dir/$layer-$STAMP.tar.gz"
+  for path in "$@"; do
+    if [ -e "$path" ]; then
+      existing+=("${path#/}")
+    else
+      printf 'doctor7-backup: %s: skipping %s (not present)\n' "$layer" "$path" >&2
+    fi
+  done
+  [ "${#existing[@]}" -gt 0 ] || die "$layer: none of the layer paths exist on this host."
+  install -d -m 0700 "$dir"
+  tar -C / --numeric-owner -czf "$file" "${existing[@]}"
+  finish "$layer" "$file"
+}
+
+backup_app() {
+  backup_paths app \
+    /usr/share/doctor7/web \
+    /etc/apache2/sites-available/doctor7.conf \
+    /etc/doctor7/web.vars.conf
+}
+
+backup_api() {
+  backup_paths api \
+    /usr/lib/doctor7 \
+    /etc/doctor7/api.env
+}
+
+backup_files() {
+  backup_paths files /var/lib/doctor7
+}
+
+backup_db() {
+  local dir file dump
+  [ -n "${DB_NAME:-}" ] || die "DB_NAME is not set in $CONF."
+  [ -r "${DB_DEFAULTS_FILE:-}" ] || die "cannot read DB_DEFAULTS_FILE. Create it from /usr/share/doctor7/backup.cnf.example."
+  if command -v mariadb-dump >/dev/null 2>&1; then
+    dump=mariadb-dump
+  elif command -v mysqldump >/dev/null 2>&1; then
+    dump=mysqldump
+  else
+    die "db: mariadb-dump was not found. Install mariadb-client."
+  fi
+  dir="$BACKUP_DIR/db"
+  file="$dir/db-$STAMP.sql.gz"
+  install -d -m 0700 "$dir"
+  # --defaults-extra-file must come first. The password stays out of the process list.
+  if ! "$dump" --defaults-extra-file="$DB_DEFAULTS_FILE" \
+    --single-transaction --routines --triggers --events \
+    --default-character-set=utf8mb4 "$DB_NAME" | gzip -9 > "$file"; then
+    rm -f "$file"
+    die "db: the dump failed. No archive was kept."
+  fi
+  finish db "$file"
+}
+
+case $LAYER in
+  app) backup_app ;;
+  api) backup_api ;;
+  db) backup_db ;;
+  files) backup_files ;;
+  all)
+    for layer in $LAYERS; do
+      "backup_$layer"
+    done
+    ;;
+  *) usage ;;
+esac
