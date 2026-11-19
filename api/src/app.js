@@ -60,6 +60,8 @@ function createApp({
     const audit = createAudit({ db, store: auditStore });
     const auth = createAuth({ ...authOptions, db, logger, audit });
     app.locals.auth = auth;
+    // The chat writes to the same audit log, so createServer reads the sink here.
+    app.locals.audit = audit;
     app.use(auth.router);
     // Everything after this point is protected. The gate answers 403 for any
     // route that has no rule, so a new route is closed until a rule opens it.
