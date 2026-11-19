@@ -2,7 +2,8 @@
 #
 # This unit runs the mock identity provider for the public demo. Its accounts need
 # no password. Do not run it on a production server. The unit is disabled by
-# default: an administrator enables it by hand on the demo host.
+# default: the package installs it disabled and stopped. An administrator enables
+# it on the demo host with: systemctl enable --now doctor7-mock-idp.service
 #
 # /etc/doctor7/idp-demo.env sets MOCK_IDP_PUBLIC_URL, MOCK_IDP_REDIRECT_URIS and
 # MOCK_IDP_CLIENT_ID. The host name is kept there, not in this file.
@@ -18,7 +19,7 @@ User=doctor7-idp
 Group=doctor7-idp
 EnvironmentFile=/etc/doctor7/idp-demo.env
 Environment=MOCK_IDP_PORT=4010
-ExecStart=/usr/bin/node /usr/lib/doctor7/mock-idp/server.js
+ExecStart=/usr/lib/doctor7/start-idp.sh
 WorkingDirectory=/usr/lib/doctor7/mock-idp
 Restart=on-failure
 RestartSec=5

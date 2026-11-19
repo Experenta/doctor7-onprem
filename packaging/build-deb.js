@@ -3,10 +3,12 @@
 
 // Builds the doctor7 Debian packages.
 //
-// Usage: node packaging/build-deb.js [api|web|all] [--out DIR] [--version V]
+// Usage: node packaging/build-deb.js [api|web|demo|all] [--out DIR] [--version V]
 //                                    [--web-dist DIR] [--no-deps]
 //
-//   api|web|all   Package to build. Default: all.
+//   api|web|all   Package to build. Default: all. "all" does not include demo.
+//   demo          Demo package with the mock identity provider. Demo only, never
+//                 production. Build it on its own: node packaging/build-deb.js demo.
 //   --out DIR     Output directory. Default: packaging/build (git ignores it).
 //   --version V   Package version. Default: version of the root package.json plus "-1".
 //   --web-dist D  Front-end build output. Default: web/dist (run `npm run build --workspace=web`).
@@ -22,8 +24,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+// Packages that "all" builds. The demo package is not one of them.
 const PACKAGES = ['api', 'web'];
-const NAMES = { api: 'doctor7-api', web: 'doctor7-web' };
+// Every package that can be named on the command line.
+const BUILDABLE = [...PACKAGES, 'demo'];
+const NAMES = { api: 'doctor7-api', web: 'doctor7-web', demo: 'doctor7-demo' };
 const REQUIRED_CONTROL_FIELDS = ['Package', 'Version', 'Architecture', 'Maintainer', 'Description'];
 const MAINTAINER_SCRIPTS = ['postinst', 'prerm', 'postrm'];
 const VERSION_PATTERN = /^[0-9][A-Za-z0-9.+~-]*$/;
@@ -63,7 +68,7 @@ function parseArgs(argv) {
       return argv[i];
     };
     if (arg === 'all') options.packages = [...PACKAGES];
-    else if (PACKAGES.includes(arg)) options.packages = [arg];
+    else if (BUILDABLE.includes(arg)) options.packages = [arg];
     else if (arg === '--out') options.out = value();
     else if (arg === '--version') options.version = value();
     else if (arg === '--web-dist') options.webDist = value();
@@ -117,6 +122,12 @@ function checkInputs({ root, packages, webDist, installDeps }) {
     if (!exists(index)) {
       problems.push(`Missing ${index}. Build the front end first: npm run build --workspace=web (or pass --web-dist).`);
     }
+  }
+  if (packages.includes('demo')) {
+    const idp = path.join(root, 'tools', 'mock-idp');
+    missing(path.join(idp, 'server.js'), 'The mock identity provider is missing: restore tools/mock-idp/server.js.');
+    missing(path.join(idp, 'rate-limit.js'), 'server.js requires tools/mock-idp/rate-limit.js, so restore it.');
+    missing(path.join(root, 'packaging', 'apache', 'idp-demo.conf.example'), 'The demo vhost example is missing: restore packaging/apache/idp-demo.conf.example.');
   }
   return problems;
 }
@@ -231,6 +242,25 @@ function addWebPayload({ tree, webDist }) {
   copyTree(webDist, path.join(tree, 'usr', 'share', 'doctor7', 'web'));
 }
 
+// The provider is one program that requires rate-limit.js from the same folder.
+// Both files are copied as text, so the package holds the repository bytes with LF
+// line endings. The vhost example stays in packaging/apache, so it has one source.
+function addDemoPayload({ root, tree }) {
+  const idpDir = path.join(tree, 'usr', 'lib', 'doctor7', 'mock-idp');
+  for (const name of ['server.js', 'rate-limit.js']) {
+    copyText(path.join(root, 'tools', 'mock-idp', name), path.join(idpDir, name));
+  }
+  copyText(
+    path.join(root, 'packaging', 'apache', 'idp-demo.conf.example'),
+    path.join(tree, 'usr', 'share', 'doctor7', 'idp-demo.conf.example'),
+  );
+}
+
+function copyText(from, to) {
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  fs.writeFileSync(to, fs.readFileSync(from, 'utf8').replace(/\r\n/g, '\n'));
+}
+
 function buildOne(pkg, { root, out, version, webDist, installDeps, log }) {
   const name = NAMES[pkg];
   const tree = path.join(out, `${name}_${version}`);
@@ -238,6 +268,7 @@ function buildOne(pkg, { root, out, version, webDist, installDeps, log }) {
   copyTree(path.join(root, 'packaging', pkg), tree, { normalize: true });
 
   if (pkg === 'api') addApiPayload({ root, tree, out, installDeps });
+  else if (pkg === 'demo') addDemoPayload({ root, tree });
   else addWebPayload({ tree, webDist });
 
   applyModes(tree);

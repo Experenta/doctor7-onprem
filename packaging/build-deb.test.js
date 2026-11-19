@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { BuildError, build, parseArgs, parseControl } = require('./build-deb');
+const { BuildError, build, checkInputs, parseArgs, parseControl } = require('./build-deb');
 
 const ROOT = path.join(__dirname, '..');
 const PKG = __dirname;
@@ -55,7 +55,7 @@ test('bash -n accepts every shell script', { skip: bashSkip }, () => {
 });
 
 test('maintainer scripts are POSIX sh, stop on error and handle unknown arguments', () => {
-  for (const pkg of ['api', 'web']) {
+  for (const pkg of ['api', 'web', 'demo']) {
     for (const name of ['postinst', 'prerm', 'postrm']) {
       const text = read(pkg, 'DEBIAN', name);
       assert.match(text, /^#!\/bin\/sh\n/, `${pkg}/${name} shebang`);
@@ -383,4 +383,72 @@ test('the builder reads its command line', () => {
   assert.deepEqual(parseArgs(['web', '--no-deps', '--out', 'x']), { packages: ['web'], installDeps: false, out: 'x' });
   assert.throws(() => parseArgs(['--bogus']), /Unknown argument/);
   assert.throws(() => parseArgs(['--out']), /needs a value/);
+});
+
+
+test('the builder reads the demo package name and keeps it out of "all"', () => {
+  assert.deepEqual(parseArgs(['demo']), { packages: ['demo'], installDeps: true });
+  assert.deepEqual(parseArgs(['all']).packages, ['api', 'web']);
+  assert.deepEqual(parseArgs([]).packages, ['api', 'web']);
+});
+
+test('the builder names every missing demo input', (t) => {
+  const dir = makeTemp(t);
+  const problems = checkInputs({ root: dir, packages: ['demo'], webDist: path.join(dir, 'dist'), installDeps: false });
+  assert.ok(problems.some((line) => /packaging.demo.DEBIAN.control/.test(line)), 'DEBIAN control');
+  assert.ok(problems.some((line) => /tools.mock-idp.server\.js/.test(line)), 'server.js');
+  assert.ok(problems.some((line) => /rate-limit\.js/.test(line)), 'rate-limit.js');
+  assert.ok(problems.some((line) => /idp-demo\.conf\.example/.test(line)), 'vhost example');
+});
+
+test('the builder assembles the demo package tree with the provider and its templates', (t) => {
+  const dir = makeTemp(t);
+  const logs = [];
+  const [demo] = build({
+    root: ROOT,
+    out: path.join(dir, 'out'),
+    packages: ['demo'],
+    version: '1.2.3-1',
+    installDeps: false,
+    log: (line) => logs.push(line),
+  });
+  assert.equal(demo.name, 'doctor7-demo');
+
+  const control = parseControl(fs.readFileSync(path.join(demo.tree, 'DEBIAN', 'control'), 'utf8'));
+  assert.equal(control.Version, '1.2.3-1');
+  assert.equal(control.Depends, 'doctor7-api, adduser, systemd');
+  assert.doesNotMatch(control.Depends, /\bnodejs\b/);
+  assert.match(control['Installed-Size'], /^\d+$/);
+
+  const tree = (...parts) => path.join(demo.tree, ...parts);
+  for (const parts of [
+    ['DEBIAN', 'postinst'],
+    ['DEBIAN', 'prerm'],
+    ['DEBIAN', 'postrm'],
+    ['usr', 'lib', 'doctor7', 'start-idp.sh'],
+    ['usr', 'lib', 'systemd', 'system', 'doctor7-mock-idp.service'],
+    ['usr', 'share', 'doctor7', 'idp-demo.env.example'],
+    ['usr', 'share', 'doctor7', 'idp-demo.conf.example'],
+    ['usr', 'lib', 'doctor7', 'mock-idp', 'server.js'],
+    ['usr', 'lib', 'doctor7', 'mock-idp', 'rate-limit.js'],
+  ]) {
+    assert.ok(fs.existsSync(tree(...parts)), parts.join('/'));
+  }
+  // The provider folder holds the two modules and nothing else: no tests, no packages.
+  assert.deepEqual(fs.readdirSync(tree('usr', 'lib', 'doctor7', 'mock-idp')).sort(), ['rate-limit.js', 'server.js']);
+
+  const lf = (file) => fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  assert.equal(lf(tree('usr', 'lib', 'doctor7', 'mock-idp', 'server.js')), lf(path.join(ROOT, 'tools', 'mock-idp', 'server.js')));
+  assert.equal(lf(tree('usr', 'lib', 'doctor7', 'mock-idp', 'rate-limit.js')), lf(path.join(ROOT, 'tools', 'mock-idp', 'rate-limit.js')));
+  assert.equal(lf(tree('usr', 'share', 'doctor7', 'idp-demo.conf.example')), lf(path.join(ROOT, 'packaging', 'apache', 'idp-demo.conf.example')));
+
+  if (process.platform !== 'win32') {
+    const mode = (...parts) => fs.statSync(tree(...parts)).mode & 0o777;
+    assert.equal(mode('DEBIAN', 'postinst'), 0o755);
+    assert.equal(mode('usr', 'lib', 'doctor7', 'start-idp.sh'), 0o755);
+    assert.equal(mode('usr', 'lib', 'systemd', 'system', 'doctor7-mock-idp.service'), 0o644);
+    assert.equal(mode('usr', 'share', 'doctor7', 'idp-demo.env.example'), 0o644);
+  }
+  if (demo.deb === null) assert.ok(logs.some((line) => line.includes('dpkg-deb was not found')));
+  else assert.ok(fs.existsSync(demo.deb));
 });

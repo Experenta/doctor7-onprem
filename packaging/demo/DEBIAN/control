@@ -1,0 +1,19 @@
+Package: doctor7-demo
+Version: @VERSION@
+Section: web
+Priority: optional
+Architecture: all
+Depends: doctor7-api, adduser, systemd
+Maintainer: doctor7-onprem maintainers <maintainers@example.org>
+Installed-Size: @INSTALLED_SIZE@
+Homepage: https://example.org/doctor7-onprem
+Description: doctor7-onprem demo sign-in provider (demo only, never production)
+ Mock identity provider for the public demo instance. It lists synthetic
+ accounts, needs no password, and signs tokens with a key that exists only in
+ memory. It is not a secure identity provider.
+ .
+ Demo only. Do not install this package on a production server. The package
+ does not enable or start the service. An administrator does that on the demo
+ host, after it fills in /etc/doctor7/idp-demo.env. The provider runs with the
+ Node.js that doctor7-api finds: NODE_BIN, /opt/node/current/bin/node, or node
+ from PATH. It must be version 22 or later.

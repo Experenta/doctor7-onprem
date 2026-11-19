@@ -1,0 +1,46 @@
+#!/bin/sh
+set -e
+
+IDP_USER=doctor7-idp
+ENV_DIR=/etc/doctor7
+ENV_FILE=/etc/doctor7/idp-demo.env
+SHARE_DIR=/usr/share/doctor7
+UNIT=doctor7-mock-idp.service
+
+systemd_running() {
+  [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
+}
+
+case "$1" in
+  configure)
+    if ! getent passwd "$IDP_USER" >/dev/null 2>&1; then
+      adduser --system --group --home /nonexistent --no-create-home "$IDP_USER"
+    fi
+
+    install -d -m 0755 -o root -g root "$ENV_DIR"
+
+    # Create the settings file from the template. Never overwrite it.
+    if [ ! -e "$ENV_FILE" ]; then
+      install -m 0640 -o root -g "$IDP_USER" "$SHARE_DIR/idp-demo.env.example" "$ENV_FILE"
+    fi
+
+    if systemd_running; then
+      systemctl daemon-reload || true
+      if [ -n "$2" ]; then
+        # Upgrade: restart the provider only when it already runs. Never start it.
+        systemctl try-restart "$UNIT" >/dev/null 2>&1 || true
+      else
+        echo "doctor7-demo: installed. Nothing is enabled or started." >&2
+        echo "doctor7-demo: edit $ENV_FILE, then run: systemctl enable --now $UNIT" >&2
+      fi
+    fi
+    ;;
+  abort-upgrade | abort-remove | abort-deconfigure)
+    ;;
+  *)
+    echo "postinst called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

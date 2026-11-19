@@ -39,7 +39,9 @@ provider.
 
 ## Configuration
 
-The deployment writes `/etc/doctor7/idp-demo.env`. The repository holds no host name.
+The package `doctor7-demo` creates `/etc/doctor7/idp-demo.env` from a template
+that holds names only. The administrator fills in the values on the demo host. The
+repository holds no host name.
 
 ```sh
 MOCK_IDP_PUBLIC_URL=https://<host>/idp
@@ -57,26 +59,37 @@ The API's own settings must match the provider:
 Set `MOCK_IDP_PUBLIC_URL` only on the demo host. Setting it turns on the request
 limits and the trust of the forwarded address described below.
 
-## Install (manual steps)
+The provider looks for Node.js in this order: `NODE_BIN` from
+`/etc/doctor7/idp-demo.env`, then `/opt/node/current/bin/node`, then `node` in
+`PATH`. It uses the first one that is version 22 or later. The unit stops with a
+message when none qualifies.
 
-The repository has no Debian package for the provider. These steps install it by hand.
+## Install with the package
 
-1. Create a system user `doctor7-idp` with no login shell and no home directory.
-2. Copy the provider to `/usr/lib/doctor7/mock-idp/`, the path the unit uses. The
-   provider is `tools/mock-idp/server.js` with `rate-limit.js`, and it needs the
-   `jose` package from the repository's `node_modules`.
-3. Write `/etc/doctor7/idp-demo.env` as shown above. Give it mode 0640, owner
-   `root`, group `doctor7-idp`.
-4. Add the `/idp/` lines of `packaging/apache/idp-demo.conf.example` to the TLS
+The package `doctor7-demo` holds the provider, its unit, and the settings template.
+Install it on the demo host only. Never install it on a production server.
+
+1. Install `doctor7-api` first. `doctor7-demo` depends on it, and the provider uses
+   the Node.js lookup of that package.
+2. Build the package on a machine with Node.js and `dpkg-deb`:
+   `node packaging/build-deb.js demo --out /tmp/doctor7-debs`. The file is
+   `doctor7-demo_<version>_all.deb`. Copy it to the demo host.
+3. Install it: `sudo apt-get install ./doctor7-demo_<version>_all.deb`. The install
+   creates the system user `doctor7-idp` and, when the file does not exist, the
+   settings file `/etc/doctor7/idp-demo.env` with mode 0640. It never overwrites an
+   existing settings file. It installs the unit `doctor7-mock-idp.service` but does
+   not enable or start it.
+4. Fill in `/etc/doctor7/idp-demo.env` as shown in the Configuration section. Set
+   `NODE_BIN` in that file only when Node.js 22 is not at `/opt/node/current/bin/node`
+   and not in `PATH`.
+5. Add the `/idp/` lines of `/usr/share/doctor7/idp-demo.conf.example` to the TLS
    virtual host of the demo host, the one that serves `/api`. Copy only the
    `ProxyPass`, the `ProxyPassReverse`, and the `/idp/` `Location` block. Do not
-   copy the `/` block. Then run `apache2ctl configtest` and reload Apache.
-5. Install the unit `packaging/systemd/doctor7-mock-idp.service` as
-   `/etc/systemd/system/doctor7-mock-idp.service`, then run
-   `systemctl daemon-reload`.
-6. Start the provider with `systemctl start doctor7-mock-idp`. Enable it at boot
-   only when the demo host needs that: `systemctl enable doctor7-mock-idp`. Nothing
-   in this repository enables the unit.
+   copy the `/` block, the `ServerName`, or the certificate lines. Then run
+   `apache2ctl configtest` and reload Apache.
+6. Enable and start the provider: `sudo systemctl enable --now doctor7-mock-idp.service`.
+   Enable it at boot only when the demo host needs that. Nothing in the package
+   enables the unit.
 
 Check the result: `https://<host>/idp/.well-known/openid-configuration` must report
 `"issuer": "https://<host>/idp"`.
@@ -98,7 +111,6 @@ clears them. To reset the data, load a new seed into an empty database, as
 
 ## Not covered by this demo
 
-- A Debian package for the provider and its unit. Packaging is a separate task.
 - A password or any other check of the account. Anyone can pick a listed account.
 - Real identity, real email delivery, or real personal data. Do not use any of them
   on the demo.
