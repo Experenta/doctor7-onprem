@@ -1,6 +1,6 @@
 'use strict';
 
-// Checks of the documents that judges read: the demo address marker, no real address
+// Checks of the documents that judges read: the demo address, no other real address
 // in the documents, the length of the demo script, the task count and the specification
 // folders of the Kiro documents, and the external forbidden-word list.
 // The list is never stored in the repository (see scripts/scan-secrets.js). Without a
@@ -13,8 +13,16 @@ const path = require('node:path');
 const { resolveForbiddenWordsFile, loadForbiddenWords } = require('./scan-secrets');
 
 const ROOT = path.resolve(__dirname, '..');
-const DEMO_MARKER = '<DEMO_URL>';
 const MAX_SCRIPT_SECONDS = 180;
+
+// The public host of the demo. The only web address allowed for it is https, with no port.
+// The dotted IP address of this host is not allowed anywhere; the public-IP check flags it.
+const DEMO_HOST = '3-139-52-25.sslip.io';
+const DEMO_URL = `https://${DEMO_HOST}`;
+const DEMO_MARKER = '<DEMO_URL>';
+const AVAILABILITY_LINE = 'The demo instance is available until 2027-01-29.';
+const HOST_SENTENCE = 'The host `3-139-52-25.sslip.io` is the public host of the demo.';
+const JUDGE_DOCS = ['README.md', 'docs/SUBMISSION.md', 'docs/DEMO-SCRIPT.md'];
 
 // Hosts that may appear in a web address of the documents:
 //   - names under example.test and the reserved .example, localhost, and loopback;
@@ -22,6 +30,7 @@ const MAX_SCRIPT_SECONDS = 180;
 //   - the Jitsi package repository;
 //   - the repository site;
 //   - the public endpoints of Google that the video documents name as API addresses.
+// The demo host is not in this set. It is handled on its own, below.
 const ALLOWED_HOSTS = new Set([
   'localhost',
   '127.0.0.1',
@@ -55,16 +64,24 @@ function judgeFiles() {
 
 const relative = (file) => path.relative(ROOT, file).split(path.sep).join('/');
 
-function hostAllowed(rawHost) {
-  const host = rawHost.toLowerCase().replace(/:\d+$/, '');
-  if (host === '' || host.includes('<')) return true; // a bare scheme in prose, or a placeholder
-  if (ALLOWED_HOSTS.has(host)) return true;
-  return host === 'example.test' || host.endsWith('.example.test') || host.endsWith('.example');
+// Returns null when the web address is allowed. Otherwise it returns the text that a
+// report names: the host as written, with its scheme when the scheme is the problem.
+function addressProblem(scheme, rawHost) {
+  const host = rawHost.toLowerCase();
+  if (host === '' || host.includes('<')) return null; // a bare scheme in prose, or a placeholder
+  if (host === DEMO_HOST) return scheme === 'https' ? null : `${scheme}://${host}`;
+  const bare = host.replace(/:\d+$/, '');
+  if (bare === DEMO_HOST) return host; // the demo host with a port is another address
+  if (ALLOWED_HOSTS.has(bare)) return null;
+  if (bare === 'example.test' || bare.endsWith('.example.test') || bare.endsWith('.example')) return null;
+  return host;
 }
 
-// Web addresses whose host is not allowed. Returns the host, so a report names it.
+// Web addresses that are not allowed. The path after the host is not checked.
 function foreignHosts(text) {
-  return [...text.matchAll(/\bhttps?:\/\/([^\s/?#`'")\]\\]*)/gi)].map((m) => m[1]).filter((host) => !hostAllowed(host));
+  return [...text.matchAll(/\b(https?):\/\/([^\s/?#`'")\]\\]*)/gi)]
+    .map((m) => addressProblem(m[1].toLowerCase(), m[2]))
+    .filter((problem) => problem !== null);
 }
 
 // An IPv4 address that is not private, loopback, link-local, or reserved for documentation.
@@ -91,10 +108,18 @@ function publicIpv4(text) {
 
 // ---- The checks, applied to the real files ----
 
-test('README.md and docs/SUBMISSION.md hold the exact demo address marker', () => {
-  for (const file of ['README.md', 'docs/SUBMISSION.md']) {
-    assert.ok(read(file).includes(DEMO_MARKER), `${file} must contain ${DEMO_MARKER}`);
+test('the three judge documents hold the exact demo address and no placeholder', () => {
+  for (const file of JUDGE_DOCS) {
+    const text = read(file);
+    assert.ok(text.includes(DEMO_URL), `${file} must contain ${DEMO_URL}`);
+    assert.ok(!text.includes(DEMO_MARKER), `${file} still contains ${DEMO_MARKER}`);
   }
+});
+
+test('README gives the availability line and the public-host sentence', () => {
+  const text = read('README.md');
+  assert.ok(text.split(/\r?\n/).includes(AVAILABILITY_LINE), `README.md must have the line "${AVAILABILITY_LINE}"`);
+  assert.ok(text.includes(HOST_SENTENCE), `README.md must state "${HOST_SENTENCE}"`);
 });
 
 test('the documents and .kiro/ hold no public IP address', () => {
@@ -158,11 +183,11 @@ test('the demo script adds up to 180 seconds or less, and its own numbers agree'
 
 // ---- The task count and the specification folders of the Kiro documents ----
 
-const TASK_COUNT = 26;
+const TASK_COUNT = 28;
 const TASK_SENTENCE =
-  '26 tasks were given to Kiro agents: K-01 to K-26 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19.';
+  '28 tasks were given to Kiro agents: K-01 to K-28 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19.';
 const SPEC_SENTENCE =
-  'From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, and K-25, which have none.';
+  'From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none.';
 // Phrases that the documents must no longer contain.
 const OLD_PHRASES = ['numbered tasks', 'each task began by writing a specification', 'each task also began with a specification'];
 const KIRO_DOCS = [
@@ -242,6 +267,16 @@ test('the term check finds a term in any letter case and reports line numbers on
 test('the address checks flag a real-looking host and a public IP, and allow the agreed ones', () => {
   const web = (host, rest = '/') => `${['https', ''].join(':')}//${host}${rest}`;
   const plain = (host) => `${['http', ''].join(':')}//${host}`;
+  // The demo host: the exact address passes, and so does a path on it. A port, http, another
+  // host, another sslip.io name, and the dotted IP address of the host fail.
+  assert.deepEqual(foreignHosts(`open ${web(DEMO_HOST)} now`), []);
+  assert.deepEqual(foreignHosts(`open ${web(DEMO_HOST, '/some/path?x=1')} now`), []);
+  assert.deepEqual(foreignHosts(`open ${web(`${DEMO_HOST}:8443`)} now`), [`${DEMO_HOST}:8443`]);
+  assert.deepEqual(foreignHosts(`open ${plain(DEMO_HOST)} now`), [`http://${DEMO_HOST}`]);
+  assert.deepEqual(foreignHosts(`open ${web('4-5-6-7.sslip.io')} now`), ['4-5-6-7.sslip.io']);
+  assert.deepEqual(foreignHosts(`open ${web(`x${DEMO_HOST}`)} now`), [`x${DEMO_HOST}`]);
+  assert.deepEqual(foreignHosts(`open ${plain('3.139.52.25')} now`), ['3.139.52.25']);
+  assert.deepEqual(publicIpv4('the server is 3.139.52.25'), ['3.139.52.25']);
   assert.deepEqual(foreignHosts(`see ${web('demo.some-clinic.org', '/app')}`), ['demo.some-clinic.org']);
   assert.deepEqual(foreignHosts(`see ${plain('203.0.115.9:8080')}`), ['203.0.115.9:8080']);
   assert.deepEqual(

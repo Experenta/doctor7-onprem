@@ -5,7 +5,7 @@ lists its clock time, its length, what is on screen, and the voice-over.
 
 ## Before recording
 
-- Open `<DEMO_URL>` in a clean browser window. The demo accounts are chosen on the
+- Open `https://3-139-52-25.sslip.io` in a clean browser window. The demo accounts are chosen on the
   sign-in page.
 - Plan three sign-ins: Professional, Client, and Auditor. Each sign-in uses two of the 20
   requests that the sign-in route allows per 15 minutes from one IP address. A recording
@@ -38,7 +38,7 @@ configuration."
 
 ### 00:25 to 00:45 (20 s): Sign in
 
-On screen: the sign-in page at `<DEMO_URL>`, then the provider's page. Pick the account
+On screen: the sign-in page at `https://3-139-52-25.sslip.io`, then the provider's page. Pick the account
 labelled Professional.
 
 Voice-over: "On the sign-in page, I pick the Professional account. The demo provider does
