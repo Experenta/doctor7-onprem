@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "Test edited area",
-  "description": "When a file in api/, web/, or scripts/ is saved, runs the tests for that area only and reports the literal output. Area mapping: scripts/ runs 'node --test scripts'; api/ runs 'npm test -w api'; web/ runs 'npm test -w web'. Do not install dependencies. Format: Kiro agent hook (fileEdited trigger, askAgent action). This format was written from the Kiro hook schema as understood at creation and was not checked against a running Kiro instance. Verify it in the IDE before relying on it.",
+  "description": "When a file in api/, web/, or scripts/ is saved, runs the tests for that area only and reports the literal output. Area mapping: scripts/ runs 'node --test \"scripts/**/*.test.js\"'; api/ runs 'npm test -w api'; web/ runs 'npm test -w web'. Do not install dependencies. Format: Kiro agent hook (fileEdited trigger, askAgent action). This format was written from the Kiro hook schema as understood at creation and was not checked against a running Kiro instance. Verify it in the IDE before relying on it.",
   "version": "1",
   "when": {
     "type": "fileEdited",
@@ -13,6 +13,6 @@
   },
   "then": {
     "type": "askAgent",
-    "prompt": "A file in api/, web/, or scripts/ was saved. Run only the tests for the area that changed: for scripts/ run 'node --test scripts'; for api/ run 'npm test -w api'; for web/ run 'npm test -w web'. Do not install dependencies and do not run deployment commands. Report the literal test output and state whether it passed."
+    "prompt": "A file in api/, web/, or scripts/ was saved. Run only the tests for the area that changed: for scripts/ run 'node --test \"scripts/**/*.test.js\"'; for api/ run 'npm test -w api'; for web/ run 'npm test -w web'. Do not install dependencies and do not run deployment commands. Report the literal test output and state whether it passed."
   }
 }
