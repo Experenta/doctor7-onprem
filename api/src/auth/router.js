@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { ApiError } = require('../http/errors');
 const { OidcError } = require('./oidc');
 const { parseCookies, serializeCookie, clearCookie } = require('./cookies');
+const { resolveSession } = require('./requestSession');
 const { randomToken, sha256Hex, pkceChallenge, safeEqual } = require('./tokens');
 const { discardingAudit } = require('../audit/entry');
 const { check, validateRequest } = require('../security/validate');
@@ -11,6 +12,7 @@ const { callbackQuery, noQuery, logoutBody } = require('../security/schemas');
 
 const LOGIN_COOKIE = 'd7_login';
 const LOGIN_PATH = '/auth';
+const LEGACY_SESSION_PATH = '/api/';
 const LOGIN_ATTEMPT_TTL_SECONDS = 10 * 60;
 const CODE_MAX_LENGTH = 2048;
 
@@ -47,6 +49,10 @@ function createAuthRouter({
   }
 
   const clearedSession = () => clearCookie(config.sessionCookieName, { sameSite: 'Strict' });
+  // Older deployments set the session cookie with Path=/api/. A browser that still
+  // holds one sends it next to the current cookie, so sign-in and logout delete it.
+  const clearedLegacySession = () =>
+    clearCookie(config.sessionCookieName, { sameSite: 'Strict', path: LEGACY_SESSION_PATH });
   const clearedLogin = () => clearCookie(LOGIN_COOKIE, { sameSite: 'Lax', path: LOGIN_PATH });
 
   function providerError(err) {
@@ -208,14 +214,14 @@ function createAuthRouter({
       outcome: 'success',
     });
     res.append('Set-Cookie', sessionCookie(session.token, session.expiresAt));
+    res.append('Set-Cookie', clearedLegacySession());
     res.redirect(302, config.postLoginPath);
   });
 
   // GET /auth/me: the signed-in user.
   router.get('/auth/me', validateRequest({ query: noQuery }), async (req, res) => {
     noStore(res);
-    const token = parseCookies(req.headers.cookie)[config.sessionCookieName];
-    const auth = await sessions.authenticate(token);
+    const { auth } = await resolveSession(sessions, req.headers.cookie, config.sessionCookieName);
     if (!auth) {
       throw new ApiError(401, 'unauthenticated', 'Sign-in is required.');
     }
@@ -234,13 +240,18 @@ function createAuthRouter({
   // cookie names no live session.
   router.post('/auth/logout', validateRequest({ query: noQuery, body: logoutBody }), async (req, res) => {
     noStore(res);
-    const token = parseCookies(req.headers.cookie)[config.sessionCookieName];
     const wantsAll = req.valid.body.all === true;
-    const auth = await sessions.authenticate(token);
+    const { auth, token, presented } = await resolveSession(sessions, req.headers.cookie, config.sessionCookieName);
     if (auth && wantsAll) {
       await sessions.revokeAllForUser(auth.user.id);
-    } else {
+    } else if (auth) {
+      // Only the session that was used is revoked.
       await sessions.revoke(token);
+    } else {
+      // No live session: revoke whatever was presented, as for a single cookie.
+      for (const value of presented) {
+        await sessions.revoke(value);
+      }
     }
     await audit.record({
       actorId: auth ? auth.user.id : null,
@@ -252,6 +263,7 @@ function createAuthRouter({
       reason: auth ? null : 'no_session',
     });
     res.append('Set-Cookie', clearedSession());
+    res.append('Set-Cookie', clearedLegacySession());
     res.status(204).end();
   });
 
@@ -264,8 +276,7 @@ function createRequireSession({ config, sessions }) {
   return function requireSession(...roles) {
     return async (req, res, next) => {
       try {
-        const token = parseCookies(req.headers.cookie)[config.sessionCookieName];
-        const auth = await sessions.authenticate(token);
+        const { auth } = await resolveSession(sessions, req.headers.cookie, config.sessionCookieName);
         if (!auth) {
           throw new ApiError(401, 'unauthenticated', 'Sign-in is required.');
         }

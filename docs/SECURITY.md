@@ -16,6 +16,10 @@ described in `docs/AUTHORIZATION.md` and `docs/API.md`.
 | A production server that starts without sign-in. | `NODE_ENV=production` stops startup without the `OIDC_*` settings. |
 | A client bundle that calls an outside server or uses inline script or style. | The test `web/test/external-requests.test.js` builds the client and checks the output. |
 
+## Session cookie
+
+When a request carries several `d7_session` cookies (for example an old one with `Path=/api/` next to the current `Path=/`), the API tries each value in order until a live session is found, checking every value fully, and answers 401 only when none is live. Sign-in and logout also delete the legacy `Path=/api/` cookie.
+
 ## Origin check
 
 Applies to every method except GET, HEAD, and OPTIONS. It runs before the body
