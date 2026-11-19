@@ -511,6 +511,8 @@ describe('appointment list of K-33', () => {
     selector: selector.trim(),
     body,
   }));
+  // The block that hides the Ends column. Since K-34 it applies from 720 to 1199 px.
+  const hideMatch = css.match(/@media \(min-width: 720px\) and \(max-width: 1199px\) \{([\s\S]*?)\n\}/);
 
   it('marks the Ends header and cells with the col-ends class, and keeps the Actions column last', () => {
     expect(appointmentsSource).toMatch(/<th scope="col" className="col-ends">\s*Ends\s*<\/th>/);
@@ -520,14 +522,14 @@ describe('appointment list of K-33', () => {
   });
 
   it('hides the Ends column with CSS, and not with the hidden attribute or an inline style', () => {
-    expect(rangeMatch, 'the 720 to 1099 px block exists').not.toBeNull();
-    expect(rangeRules.find((rule) => rule.selector === '.appt-table .col-ends')?.body).toMatch(/display:\s*none/);
+    expect(hideMatch, 'the 720 to 1199 px block exists').not.toBeNull();
+    expect(hideMatch[1]).toMatch(/\.appt-table \.col-ends\s*\{\s*display:\s*none;\s*\}/);
     expect(appointmentsSource).not.toMatch(/\shidden[\s/>=]/);
     expect(appointmentsSource).not.toMatch(/style=\{\{/);
   });
 
-  it('applies the hiding only from 720 to 1099 px, so the stacked layout keeps every column', () => {
-    const outside = css.replace(rangeMatch[0], '');
+  it('applies the hiding only from 720 to 1199 px, so the stacked layout keeps every column', () => {
+    const outside = css.replace(hideMatch[0], '');
     const hides = [...outside.matchAll(/\.col-ends\s*\{[^}]*display:\s*none/g)];
     expect(hides).toEqual([]);
     expect(css).toMatch(/@media \(max-width: 719px\) \{/);
@@ -547,5 +549,36 @@ describe('appointment list of K-33', () => {
     // The project manager measures the fit in a real browser.
     expect(rulesFor('.table-wrap')[0].body).toMatch(/overflow-x:\s*auto/);
     expect(range).not.toMatch(/\.table-wrap/);
+  });
+});
+
+
+
+describe('appointment list of K-34', () => {
+  // jsdom does not lay out tables, so these tests check the media-query rules only. The
+  // widths in the project manager's browser measurements are not tested here.
+  const hideMatch = css.match(/@media \(min-width: 720px\) and \(max-width: 1199px\) \{([\s\S]*?)\n\}/);
+  const avatarMatch = css.match(/@media \(min-width: 960px\) and \(max-width: 1019px\) \{([\s\S]*?)\n\}/);
+  const stackedMatch = css.match(/@media \(max-width: 719px\) \{([\s\S]*?)\n\}/);
+
+  it('hides the Ends column from 720 px to 1199 px, and shows it again from 1200 px', () => {
+    expect(hideMatch, 'the 720 to 1199 px block exists').not.toBeNull();
+    expect(hideMatch[1]).toMatch(/\.appt-table \.col-ends\s*\{\s*display:\s*none;\s*\}/);
+    // No other block hides the column, so from 1200 px nothing removes it.
+    expect(css.replace(hideMatch[0], '')).not.toMatch(/\.col-ends\s*\{[^}]*display:\s*none/);
+  });
+
+  it('hides the avatars of the Professional and Client cells only from 960 px to 1019 px', () => {
+    expect(avatarMatch, 'the 960 to 1019 px block exists').not.toBeNull();
+    expect(avatarMatch[1]).toMatch(/\.appt-table \.person \.avatar\s*\{\s*display:\s*none;\s*\}/);
+    // The avatar rule appears in no other block.
+    expect(css.replace(avatarMatch[0], '')).not.toMatch(/\.person \.avatar/);
+  });
+
+  it('keeps the stacked layout under 720 px and the wrapper scroll as a fallback', () => {
+    expect(stackedMatch, 'the stacked block exists').not.toBeNull();
+    expect(stackedMatch[1]).toMatch(/\.table td::before\s*\{[^}]*attr\(data-label\)/);
+    expect(stackedMatch[1]).not.toMatch(/col-ends|avatar/);
+    expect(rulesFor('.table-wrap')[0].body).toMatch(/overflow-x:\s*auto/);
   });
 });

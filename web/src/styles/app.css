@@ -1393,16 +1393,29 @@ a:hover {
   }
 }
 
-/* From 720 to 1099 px the list hides its Ends column, which the appointment detail shows,
-   and uses tighter horizontal cell padding. Without this, the table is wider than its
-   card and the Open action is cut off. Under 720 px the table stacks and keeps every column. */
+/* From 720 to 1099 px the list uses tighter horizontal cell padding. Without this, the table is
+   wider than its card and the Open action is cut off. Under 720 px the table stacks and keeps
+   every column. */
 @media (min-width: 720px) and (max-width: 1099px) {
   .appt-table th,
   .appt-table td {
     padding-left: var(--space-2);
     padding-right: var(--space-2);
   }
+}
+
+/* From 720 to 1199 px the list hides its Ends column, which the appointment detail shows.
+   From 1200 px the column is shown again. */
+@media (min-width: 720px) and (max-width: 1199px) {
   .appt-table .col-ends {
+    display: none;
+  }
+}
+
+/* From 960 to 1019 px the avatars of the Professional and Client cells are hidden. They are
+   decorative (aria-hidden), and hiding them gives the row the room it needs. */
+@media (min-width: 960px) and (max-width: 1019px) {
+  .appt-table .person .avatar {
     display: none;
   }
 }
