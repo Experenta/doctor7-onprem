@@ -12,10 +12,18 @@ const {
   scanFiles,
   loadForbiddenWords,
   resolveForbiddenWordsFile,
+  hasGitRepository,
 } = require('./scan-secrets.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SCANNER_SOURCE = path.join(__dirname, 'scan-secrets.js');
+
+// The tests that create a temporary repository need git. The tests that read this
+// repository's own .git need the .git entry too. Each one is skipped, with a reason, when its input is missing.
+const GIT_AVAILABLE = spawnSync('git', ['--version']).status === 0;
+const NO_GIT = GIT_AVAILABLE ? false : 'git is not available on this machine';
+const NO_CHECKOUT =
+  GIT_AVAILABLE && hasGitRepository(REPO_ROOT) ? false : 'this folder has no .git entry, or git is not available';
 
 // Test fixtures are assembled at runtime so this file never contains the
 // literal patterns it is meant to detect.
@@ -100,7 +108,7 @@ function listFilesRecursive(dir) {
   });
 }
 
-test('scanner fails on a file that contains a fake cloud key', () => {
+test('scanner fails on a file that contains a fake cloud key', { skip: NO_GIT }, () => {
   const dir = makeTempRepo({ 'config.txt': `key = ${FAKE_AWS_KEY}\n` });
   try {
     withTempList([FAKE_TERM, FAKE_TERM_2], (list) =>
@@ -115,7 +123,7 @@ test('scanner fails on a file that contains a fake cloud key', () => {
   }
 });
 
-test('with a list, a file containing a forbidden term fails the scan', () => {
+test('with a list, a file containing a forbidden term fails the scan', { skip: NO_GIT }, () => {
   const repo = makeTempRepo({ 'notes.md': `reference ${FAKE_TERM.toUpperCase()} here\n` });
   try {
     withTempList([FAKE_TERM], (list) => {
@@ -128,7 +136,7 @@ test('with a list, a file containing a forbidden term fails the scan', () => {
   }
 });
 
-test('with a list, a file without a forbidden term passes the scan', () => {
+test('with a list, a file without a forbidden term passes the scan', { skip: NO_GIT }, () => {
   const repo = makeTempRepo({ 'notes.md': 'nothing to see here\n' });
   try {
     withTempList([FAKE_TERM], (list) => {
@@ -141,7 +149,7 @@ test('with a list, a file without a forbidden term passes the scan', () => {
   }
 });
 
-test('scanner ignores files excluded from the commit by .gitignore', () => {
+test('scanner ignores files excluded from the commit by .gitignore', { skip: NO_GIT }, () => {
   const dir = makeTempRepo({
     '.gitignore': 'secret.txt\n',
     'secret.txt': `key = ${FAKE_AWS_KEY}\n`,
@@ -158,7 +166,7 @@ test('scanner ignores files excluded from the commit by .gitignore', () => {
   }
 });
 
-test('without a list the scanner exits 0 and warns on one line', () => {
+test('without a list the scanner exits 0 and warns on one line', { skip: NO_GIT }, () => {
   const repo = makeTempRepo({ 'ok.txt': 'nothing here\n' });
   try {
     const scanner = copyScannerInto(repo);
@@ -171,7 +179,36 @@ test('without a list the scanner exits 0 and warns on one line', () => {
   }
 });
 
-test('the local list file is ignored by git', () => {
+test('a folder with no .git entry is skipped with one notice and exit 0, with no scan', () => {
+  // A plain folder, such as an export without git history. No git call is made here.
+  const dir = makeTempDir('scan-nogit-');
+  try {
+    writeFiles(dir, { 'ok.txt': 'nothing here\n' });
+    const result = runScanner(SCANNER_SOURCE, dir, undefined);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.stdout, '', 'nothing is scanned or reported on stdout');
+    assert.match(result.stderr, /secret scan: skipped\. The folder has no \.git entry/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('hasGitRepository reads the .git entry, as a folder or as a worktree file', () => {
+  const plain = makeTempDir('scan-plain-');
+  const folder = makeTempDir('scan-folder-');
+  const worktree = makeTempDir('scan-worktree-');
+  try {
+    assert.equal(hasGitRepository(plain), false);
+    fs.mkdirSync(path.join(folder, '.git'));
+    assert.equal(hasGitRepository(folder), true);
+    fs.writeFileSync(path.join(worktree, '.git'), 'gitdir: /elsewhere\n');
+    assert.equal(hasGitRepository(worktree), true);
+  } finally {
+    for (const dir of [plain, folder, worktree]) fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the local list file is ignored by git', { skip: NO_CHECKOUT }, () => {
   const result = spawnSync(
     'git',
     ['check-ignore', '-q', '--no-index', 'scripts/forbidden-words.local.txt'],
@@ -181,7 +218,7 @@ test('the local list file is ignored by git', () => {
   assert.equal(result.status, 0, 'scripts/forbidden-words.local.txt is not ignored by git');
 });
 
-test('the local list file is used as the list and is not scanned', () => {
+test('the local list file is used as the list and is not scanned', { skip: NO_GIT }, () => {
   const repo = makeTempRepo({ 'notes.md': `reference ${FAKE_TERM} here\n` });
   try {
     writeFiles(repo, { 'scripts/forbidden-words.local.txt': `${FAKE_TERM}\n` });
@@ -196,7 +233,7 @@ test('the local list file is used as the list and is not scanned', () => {
   }
 });
 
-test('the list named by FORBIDDEN_WORDS_FILE is not scanned', () => {
+test('the list named by FORBIDDEN_WORDS_FILE is not scanned', { skip: NO_GIT }, () => {
   const repo = makeTempRepo({ 'notes.md': 'nothing to see here\n' });
   try {
     writeFiles(repo, { 'lists/words.txt': `${FAKE_TERM}\n` });
@@ -209,7 +246,7 @@ test('the list named by FORBIDDEN_WORDS_FILE is not scanned', () => {
   }
 });
 
-test('the example list is not scanned', () => {
+test('the example list is not scanned', { skip: NO_GIT }, () => {
   const repo = makeTempRepo({ 'notes.md': 'nothing to see here\n' });
   try {
     const exampleContent = fs.readFileSync(EXAMPLE_FORBIDDEN_WORDS_FILE, 'utf8');
@@ -257,7 +294,7 @@ test('CLAUDE.md, README.md, .kiro/ and example lists do not contain the configur
   assert.deepEqual(hits, [], `configured terms found in: ${hits.join(', ')}`);
 });
 
-test('scanner passes on this repository', () => {
+test('scanner passes on this repository', { skip: NO_CHECKOUT }, () => {
   const findings = scanFiles(REPO_ROOT);
   assert.deepEqual(
     findings,
@@ -266,7 +303,7 @@ test('scanner passes on this repository', () => {
   );
 });
 
-test('.kiro/ is not ignored by .gitignore', () => {
+test('.kiro/ is not ignored by .gitignore', { skip: NO_CHECKOUT }, () => {
   const paths = [
     '.kiro/steering/product.md',
     '.kiro/hooks/secret-scan-on-save.kiro.hook',

@@ -37,15 +37,33 @@ workspaces and has no dependencies.
 npm test
 ```
 
-This runs `node --test "scripts/**/*.test.js" "api/**/*.test.js" "tools/**/*.test.js"`,
-which includes the secret scan of the repository, the API tests, and the
-simulator tests.
+This is the fast check. It runs `node --test "scripts/**/*.test.js" "api/**/*.test.js" "tools/**/*.test.js" "seed/**/*.test.js" "packaging/**/*.test.js"`.
+A test that needs an input the clone does not have is skipped, and the output names the
+missing input. A clean clone with no build passes, and these tests are skipped:
+
+- The MariaDB tests, without `DATABASE_URL`.
+- The packaging tests that need `bash`, `dpkg`, or `git`.
+- The secret scanner tests that need `git`, or a `.git` entry.
+- The forbidden-word checks, without a word list.
+
+```sh
+npm run verify
+```
+
+This is the full check. It builds the web client (`npm run build --workspace=web`), then
+runs `npm test` with `REQUIRE_BUNDLE_BUDGET=1`. The bundle budget test fails when the build
+is missing, instead of skipping. `verify` does not run the web tests. Run them with
+`npm run test:web`.
 
 The web tests run with Vitest and are not part of `npm test`. Run them with:
 
 ```sh
 npm run test:web
 ```
+
+Without a build in `web/dist`, the bundle budget test is skipped and says which command
+builds it. With a build, it measures the initial JavaScript and CSS and fails when a size is
+over its budget.
 
 To run the scanner by itself:
 

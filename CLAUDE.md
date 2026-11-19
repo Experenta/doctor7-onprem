@@ -30,7 +30,9 @@ use Google Meet or Jitsi, selected through configuration.
 ## Commands
 
 ```sh
-npm test                    # node --test "scripts/**/*.test.js" "api/**/*.test.js" "tools/**/*.test.js"
+npm test                    # node --test "scripts/**/*.test.js" "api/**/*.test.js" "tools/**/*.test.js" "seed/**/*.test.js" "packaging/**/*.test.js"
+                            # fast; skips the checks whose inputs are missing, with a notice
+npm run verify              # builds the web client, then npm test with REQUIRE_BUNDLE_BUDGET=1 (does not run the web tests)
 npm run test:web            # web tests (Vitest): npm test --workspace=web
 node scripts/scan-secrets.js  # scan the files that would be committed
 ```

@@ -5,7 +5,8 @@
 // ignored) for cloud and token key patterns and, when a list is configured,
 // for forbidden words.
 // Usage: node scripts/scan-secrets.js [repoRoot]
-// Exit code 0: no findings. Exit code 1: findings or error.
+// Exit code 0: no findings, or the scan was skipped because the folder has no .git
+// entry (a notice is printed). Exit code 1: findings or error.
 //
 // The forbidden-word list lives outside the repository. The scanner uses the
 // first of these that exists:
@@ -65,6 +66,11 @@ function listFilesToSkip(env = process.env) {
   return skip;
 }
 
+// True when root holds a .git entry. A worktree has a .git file, which also counts.
+function hasGitRepository(root) {
+  return fs.existsSync(path.join(root, '.git'));
+}
+
 // Files that would enter a commit: tracked, plus untracked files not ignored.
 function listCommitFiles(root) {
   const out = execFileSync(
@@ -119,6 +125,7 @@ module.exports = {
   SECRET_PATTERNS,
   resolveForbiddenWordsFile,
   loadForbiddenWords,
+  hasGitRepository,
   listCommitFiles,
   scanFiles,
 };
@@ -126,21 +133,30 @@ module.exports = {
 if (require.main === module) {
   const root = path.resolve(process.argv[2] || path.join(__dirname, '..'));
   try {
-    if (resolveForbiddenWordsFile() === null) {
+    if (!hasGitRepository(root)) {
+      // Without git there is no list of the files that would be committed, so the scan
+      // is skipped. The notice says so; the exit code is 0 because this is not a finding.
       process.stderr.write(
-        'secret scan: no forbidden-word list configured; checking key patterns only. ' +
-          'Set FORBIDDEN_WORDS_FILE or create scripts/forbidden-words.local.txt.\n'
+        'secret scan: skipped. The folder has no .git entry, so git cannot list the files ' +
+          'that would be committed. Run the scan in a git checkout.\n'
       );
-    }
-    const findings = scanFiles(root);
-    for (const f of findings) {
-      process.stdout.write(`${f.file}:${f.line}: ${f.rule}\n`);
-    }
-    if (findings.length > 0) {
-      process.stdout.write(`secret scan: ${findings.length} finding(s)\n`);
-      process.exitCode = 1;
     } else {
-      process.stdout.write('secret scan: no findings\n');
+      if (resolveForbiddenWordsFile() === null) {
+        process.stderr.write(
+          'secret scan: no forbidden-word list configured; checking key patterns only. ' +
+            'Set FORBIDDEN_WORDS_FILE or create scripts/forbidden-words.local.txt.\n'
+        );
+      }
+      const findings = scanFiles(root);
+      for (const f of findings) {
+        process.stdout.write(`${f.file}:${f.line}: ${f.rule}\n`);
+      }
+      if (findings.length > 0) {
+        process.stdout.write(`secret scan: ${findings.length} finding(s)\n`);
+        process.exitCode = 1;
+      } else {
+        process.stdout.write('secret scan: no findings\n');
+      }
     }
   } catch (err) {
     process.stderr.write(`secret scan error: ${err.message}\n`);
