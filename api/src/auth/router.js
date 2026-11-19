@@ -6,11 +6,12 @@ const { OidcError } = require('./oidc');
 const { parseCookies, serializeCookie, clearCookie } = require('./cookies');
 const { randomToken, sha256Hex, pkceChallenge, safeEqual } = require('./tokens');
 const { discardingAudit } = require('../audit/entry');
+const { check, validateRequest } = require('../security/validate');
+const { callbackQuery, noQuery, logoutBody } = require('../security/schemas');
 
 const LOGIN_COOKIE = 'd7_login';
 const LOGIN_PATH = '/auth';
 const LOGIN_ATTEMPT_TTL_SECONDS = 10 * 60;
-const STATE_PATTERN = /^[A-Za-z0-9_-]{20,128}$/;
 const CODE_MAX_LENGTH = 2048;
 
 // Logs a fixed event and reason code. Tokens, codes, emails, and cookie values
@@ -79,7 +80,7 @@ function createAuthRouter({
   }
 
   // GET /auth/login: start the authorization code flow with PKCE.
-  router.get('/auth/login', async (req, res) => {
+  router.get('/auth/login', validateRequest({ query: noQuery }), async (req, res) => {
     noStore(res);
     const at = now();
     try {
@@ -132,10 +133,11 @@ function createAuthRouter({
     noStore(res);
     res.append('Set-Cookie', clearedLogin());
 
-    const { state, code, error } = req.query;
-    if (typeof state !== 'string' || !STATE_PATTERN.test(state)) {
+    const checked = check(callbackQuery, req.query, 'query');
+    if (!checked.ok) {
       throw await rejected(req, 'invalid_request', new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.'));
     }
+    const { state, code, error } = checked.value;
 
     // The attempt is deleted by this read, so a state value works once.
     const attempt = await store.consumeLoginAttempt(sha256Hex(state));
@@ -210,7 +212,7 @@ function createAuthRouter({
   });
 
   // GET /auth/me: the signed-in user.
-  router.get('/auth/me', async (req, res) => {
+  router.get('/auth/me', validateRequest({ query: noQuery }), async (req, res) => {
     noStore(res);
     const token = parseCookies(req.headers.cookie)[config.sessionCookieName];
     const auth = await sessions.authenticate(token);
@@ -230,10 +232,10 @@ function createAuthRouter({
   // the body is {"all":true}. It always answers 204 and clears the cookie. Each
   // call writes one audit entry. It is a failure with reason no_session when the
   // cookie names no live session.
-  router.post('/auth/logout', async (req, res) => {
+  router.post('/auth/logout', validateRequest({ query: noQuery, body: logoutBody }), async (req, res) => {
     noStore(res);
     const token = parseCookies(req.headers.cookie)[config.sessionCookieName];
-    const wantsAll = req.body && req.body.all === true;
+    const wantsAll = req.valid.body.all === true;
     const auth = await sessions.authenticate(token);
     if (auth && wantsAll) {
       await sessions.revokeAllForUser(auth.user.id);

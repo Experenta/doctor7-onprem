@@ -41,6 +41,16 @@ function createErrorHandler({ logger = console } = {}) {
       status = 413;
       code = 'payload_too_large';
       message = 'Request body is too large.';
+    } else if (err && typeof err.type === 'string' && err.status === 415) {
+      // The body parser refused the charset or the encoding. Its own text is not sent.
+      status = 415;
+      code = 'unsupported_media_type';
+      message = 'The request encoding is not supported.';
+    } else if (err && typeof err.type === 'string' && err.status >= 400 && err.status < 500) {
+      // Any other client error from the body parser (for example an aborted request).
+      status = 400;
+      code = 'invalid_request';
+      message = 'The request could not be read.';
     } else {
       logger.error(err);
     }

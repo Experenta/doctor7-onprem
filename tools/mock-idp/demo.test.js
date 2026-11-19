@@ -3,6 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { createMockIdp, configFromEnv, parsePublicUrl, DEMO_RATE_LIMIT } = require('./server');
 const { DEMO_USERS, PARTICIPANTS } = require('../../seed/lib/generator');
 
@@ -161,7 +163,9 @@ test('the login page lists the four demo accounts with their roles, in English',
     const html = await (await fetch(`${idp.localUrl}/authorize?${authorizeParams()}`)).text();
     assert.match(html, /<html lang="en">/);
     assert.match(html, /synthetic demonstration accounts/);
-    assert.match(html, /resets regularly/);
+    assert.match(html, /Their data is invented\./);
+    assert.doesNotMatch(html, /resets regularly/);
+    assert.doesNotMatch(html, /reset/i);
     for (const seedUser of DEMO_USERS) {
       const label = ROLE_LABEL_FOR_SEED[seedUser.role];
       assert.ok(html.includes(seedUser.displayName), `${seedUser.email} name`);
@@ -252,4 +256,30 @@ test('limits are off when no rate limit is configured', async () => {
       assert.equal((await fetch(`${idp.localUrl}/authorize?${authorizeParams()}`)).status, 200);
     }
   });
+});
+
+
+// A sentence claims a scheduled reset when it names a reset and a schedule word.
+const RESET_WORD = /\breset|\brestor|\bwipe|\bcleared\b/i;
+const SCHEDULE_WORD = /regular|schedul|\bevery\b|daily|hourly|weekly|periodic|automatic|nightly|\beach (day|hour|week)/i;
+
+function sentences(text) {
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function scheduledResetClaims(text) {
+  return sentences(text).filter((sentence) => RESET_WORD.test(sentence) && SCHEDULE_WORD.test(sentence));
+}
+
+test('neither the login page nor DEMO.md says that the data is reset on a schedule', async () => {
+  await withIdp({ publicUrl: PUBLIC }, async (idp) => {
+    const html = await (await fetch(`${idp.localUrl}/authorize?${authorizeParams()}`)).text();
+    const visible = html.replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ');
+    assert.deepEqual(scheduledResetClaims(visible), []);
+  });
+  const demo = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'DEMO.md'), 'utf8');
+  assert.deepEqual(scheduledResetClaims(demo), []);
 });

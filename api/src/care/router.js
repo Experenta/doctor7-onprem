@@ -5,63 +5,24 @@ const { randomUUID } = require('node:crypto');
 const { ApiError } = require('../http/errors');
 const { can, listScope, rolesFor } = require('../authz/policy');
 const { requestContext } = require('../audit/entry');
+const { check, validateRequest } = require('../security/validate');
+const { idSchema, noQuery, pageQuery, appointmentCreateBody, consultationCreateBody } = require('../security/schemas');
 
-const ID_MAX_LENGTH = 64;
 const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
-const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
 const forbidden = () => new ApiError(403, 'forbidden', 'This account may not use this resource.');
 const notFound = () => new ApiError(404, 'not_found', 'Resource not found.');
 const invalid = (message) => new ApiError(400, 'invalid_request', message);
 
+// A path id that fails the id schema is handled as a missing record (audited
+// 404), so a caller cannot tell the two apart.
 function isId(value) {
-  return typeof value === 'string' && value.length > 0 && Array.from(value).length <= ID_MAX_LENGTH;
+  return check(idSchema, value, 'id').ok;
 }
 
-function isPlainObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function parseTime(value, name) {
-  if (typeof value !== 'string' || !ISO_UTC.test(value)) {
-    throw invalid(`${name} must be an ISO 8601 UTC timestamp such as 2026-11-19T15:00:00.000Z.`);
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw invalid(`${name} must be an ISO 8601 UTC timestamp such as 2026-11-19T15:00:00.000Z.`);
-  }
-  return date;
-}
-
-function parsePage(query) {
-  const read = (name, fallback, min, max) => {
-    const raw = query[name];
-    if (raw === undefined) return fallback;
-    if (typeof raw !== 'string' || !/^\d{1,9}$/.test(raw) || Number(raw) < min || Number(raw) > max) {
-      throw invalid(`${name} must be an integer from ${min} to ${max}.`);
-    }
-    return Number(raw);
-  };
-  return {
-    limit: read('limit', DEFAULT_LIMIT, 1, MAX_LIMIT),
-    offset: read('offset', 0, 0, 999999999),
-  };
-}
-
-// Rejects a body that is not an object with exactly the allowed keys. Unknown
-// keys fail, so a client cannot try to set fields such as centerId.
-function readBody(req, allowed) {
-  const body = req.body;
-  if (!isPlainObject(body)) {
-    throw invalid('The request body must be a JSON object.');
-  }
-  for (const key of Object.keys(body)) {
-    if (!allowed.includes(key)) {
-      throw invalid(`Unknown field: ${key.slice(0, 40)}.`);
-    }
-  }
-  return body;
+// The page of a list request, from the validated query.
+function pageOf(query) {
+  return { limit: query.limit ?? DEFAULT_LIMIT, offset: query.offset ?? 0 };
 }
 
 function appointmentResource(appointment) {
@@ -137,7 +98,7 @@ function createCareRouter({ store, now = () => new Date(), newId = randomUUID, a
     return audit.record({ ...requestContext(req), ...entry, outcome: 'success' });
   }
 
-  router.get('/appointments', async (req, res) => {
+  router.get('/appointments', validateRequest({ query: pageQuery }), async (req, res) => {
     const { user } = req.auth;
     const filter = listScope(user, 'appointment');
     if (!filter) {
@@ -147,11 +108,11 @@ function createCareRouter({ store, now = () => new Date(), newId = randomUUID, a
         forbidden()
       );
     }
-    const items = await store.listAppointments(filter, parsePage(req.query));
+    const items = await store.listAppointments(filter, pageOf(req.valid.query));
     res.json({ items: items.map(appointmentJson) });
   });
 
-  router.get('/appointments/:id', async (req, res) => {
+  router.get('/appointments/:id', validateRequest({ query: noQuery }), async (req, res) => {
     const { user } = req.auth;
     const denied = { action: 'appointment.read', targetType: 'appointment' };
     if (!isId(req.params.id)) throw await refuse(req, { ...denied, reason: 'invalid_id' }, notFound());
@@ -168,14 +129,10 @@ function createCareRouter({ store, now = () => new Date(), newId = randomUUID, a
     res.json(appointmentJson(item));
   });
 
-  router.post('/appointments', async (req, res) => {
+  router.post('/appointments', validateRequest({ query: noQuery, body: appointmentCreateBody }), async (req, res) => {
     const { user } = req.auth;
-    const body = readBody(req, ['professionalId', 'clientId', 'startsAt', 'endsAt']);
-    if (!isId(body.professionalId) || !isId(body.clientId)) {
-      throw invalid('professionalId and clientId must be non-empty ids.');
-    }
-    const startsAt = parseTime(body.startsAt, 'startsAt');
-    const endsAt = parseTime(body.endsAt, 'endsAt');
+    const body = req.valid.body;
+    const { startsAt, endsAt } = body;
     if (endsAt <= startsAt) {
       throw invalid('endsAt must be after startsAt.');
     }
@@ -216,15 +173,9 @@ function createCareRouter({ store, now = () => new Date(), newId = randomUUID, a
     res.status(201).json(appointmentJson(created));
   });
 
-  router.post('/consultations', async (req, res) => {
+  router.post('/consultations', validateRequest({ query: noQuery, body: consultationCreateBody }), async (req, res) => {
     const { user } = req.auth;
-    const body = readBody(req, ['appointmentId', 'body']);
-    if (!isId(body.appointmentId)) {
-      throw invalid('appointmentId must be a non-empty id.');
-    }
-    if (!isPlainObject(body.body)) {
-      throw invalid('body must be a JSON object.');
-    }
+    const body = req.valid.body;
     // The audit target is the appointment the caller named, because no consultation exists yet.
     const target = { action: 'consultation.create', targetType: 'appointment' };
     const appointment = await store.findAppointment(body.appointmentId);
@@ -264,7 +215,7 @@ function createCareRouter({ store, now = () => new Date(), newId = randomUUID, a
     res.status(201).json(consultationJson(created));
   });
 
-  router.get('/consultations/:id', async (req, res) => {
+  router.get('/consultations/:id', validateRequest({ query: noQuery }), async (req, res) => {
     const { user } = req.auth;
     const target = { action: 'consultation.read', targetType: 'consultation' };
     if (!isId(req.params.id)) throw await refuse(req, { ...target, reason: 'invalid_id' }, notFound());

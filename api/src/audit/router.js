@@ -3,72 +3,24 @@
 const { Router } = require('express');
 const { ApiError } = require('../http/errors');
 const { listScope } = require('../authz/policy');
-const { OUTCOMES, requestContext } = require('./entry');
+const { requestContext } = require('./entry');
+const { validateRequest } = require('../security/validate');
+const { auditQuery } = require('../security/schemas');
 
-// GET /audit. The gate admits only the auditor role. This handler limits the
-// rows to the auditor's center and checks the filters and the page.
+// GET /audit. The gate admits only the auditor role. The query schema checks the
+// filters and the page. This handler limits the rows to the auditor's center.
 const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
-const MAX_OFFSET = 999999999;
-const ID_MAX_LENGTH = 64;
-const ACTION_PATTERN = /^[a-z][a-z0-9_.]{0,99}$/;
-const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
 const invalid = (message) => new ApiError(400, 'invalid_request', message);
 const forbidden = () => new ApiError(403, 'forbidden', 'This account may not use this resource.');
 
-function parseTime(value, name) {
-  if (typeof value !== 'string' || !ISO_UTC.test(value)) {
-    throw invalid(`${name} must be an ISO 8601 UTC timestamp such as 2026-11-19T15:00:00.000Z.`);
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw invalid(`${name} must be an ISO 8601 UTC timestamp such as 2026-11-19T15:00:00.000Z.`);
-  }
-  return date;
-}
-
-function parseFilter(query) {
-  const filter = {};
-  if (query.from !== undefined) filter.from = parseTime(query.from, 'from');
-  if (query.to !== undefined) filter.to = parseTime(query.to, 'to');
+// Splits the validated query into the filter and the page.
+function splitQuery(query) {
+  const { limit, offset, ...filter } = query;
   if (filter.from && filter.to && filter.from > filter.to) {
     throw invalid('from must not be after to.');
   }
-  if (query.actorId !== undefined) {
-    if (typeof query.actorId !== 'string' || query.actorId.length === 0 || Array.from(query.actorId).length > ID_MAX_LENGTH) {
-      throw invalid('actorId must be a non-empty id of at most 64 characters.');
-    }
-    filter.actorId = query.actorId;
-  }
-  if (query.action !== undefined) {
-    if (typeof query.action !== 'string' || !ACTION_PATTERN.test(query.action)) {
-      throw invalid('action must be a lowercase dotted name such as auth.login.');
-    }
-    filter.action = query.action;
-  }
-  if (query.outcome !== undefined) {
-    if (!OUTCOMES.includes(query.outcome)) {
-      throw invalid('outcome must be success, denied, or failure.');
-    }
-    filter.outcome = query.outcome;
-  }
-  return filter;
-}
-
-function parsePage(query) {
-  const read = (name, fallback, min, max) => {
-    const raw = query[name];
-    if (raw === undefined) return fallback;
-    if (typeof raw !== 'string' || !/^\d{1,9}$/.test(raw) || Number(raw) < min || Number(raw) > max) {
-      throw invalid(`${name} must be an integer from ${min} to ${max}.`);
-    }
-    return Number(raw);
-  };
-  return {
-    limit: read('limit', DEFAULT_LIMIT, 1, MAX_LIMIT),
-    offset: read('offset', 0, 0, MAX_OFFSET),
-  };
+  return { filter, page: { limit: limit ?? DEFAULT_LIMIT, offset: offset ?? 0 } };
 }
 
 function entryJson(entry) {
@@ -89,7 +41,7 @@ function entryJson(entry) {
 function createAuditRouter({ record, store }) {
   const router = Router();
 
-  router.get('/audit', async (req, res) => {
+  router.get('/audit', validateRequest({ query: auditQuery }), async (req, res) => {
     const { user } = req.auth;
     const scope = listScope(user, 'audit');
     if (!scope) {
@@ -104,8 +56,8 @@ function createAuditRouter({ record, store }) {
       });
       throw forbidden();
     }
-    const filter = { ...parseFilter(req.query), centerId: scope.centerId };
-    const entries = await store.list(filter, parsePage(req.query));
+    const { filter, page } = splitQuery(req.valid.query);
+    const entries = await store.list({ ...filter, centerId: scope.centerId }, page);
     res.json({ items: entries.map(entryJson) });
   });
 

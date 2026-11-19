@@ -178,13 +178,27 @@ test('node resolution uses NODE_BIN first', { skip: bashSkip || process.platform
 
 const vhost = read('web', 'etc', 'apache2', 'sites-available', 'doctor7.conf');
 
-test('the vhost rewrites both cookie paths, in order', () => {
+test('the vhost rewrites only the sign-in cookie path, and keeps the session cookie at Path=/', () => {
   const lines = vhost.split('\n').map((line) => line.trim());
-  const auth = lines.indexOf('ProxyPassReverseCookiePath /auth /api/auth');
-  const root = lines.indexOf('ProxyPassReverseCookiePath / /api/');
-  assert.ok(auth >= 0, 'missing /auth rule');
-  assert.ok(root >= 0, 'missing / rule');
-  assert.ok(auth < root, 'the /auth rule must come first');
+  assert.ok(lines.includes('ProxyPassReverseCookiePath /auth /api/auth'), 'missing /auth rule');
+  const cookieRules = lines.filter((line) => line.startsWith('ProxyPassReverseCookiePath'));
+  assert.deepEqual(cookieRules, ['ProxyPassReverseCookiePath /auth /api/auth']);
+  assert.doesNotMatch(vhost, /^\s*ProxyPassReverseCookiePath \/ \/api\/\s*$/m);
+});
+
+test('the vhost comment explains why the session cookie keeps Path=/ for /ws', () => {
+  const comment = vhost
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('#'))
+    .join('\n');
+  assert.match(comment, /session cookie keeps Path=\/ on purpose/);
+  assert.match(comment, /\/ws has no prefix and must receive/);
+});
+
+test('the client routing rule excludes /api, /ws and /idp', () => {
+  assert.ok(vhost.includes('RewriteCond %{REQUEST_URI} !^/(api|ws|idp)(/|$)'), 'the rewrite exclusion');
+  assert.doesNotMatch(vhost, /RewriteCond %\{REQUEST_URI\} !\^\/\(api\|ws\)\(\/\|\$\)/);
 });
 
 test('the vhost proxies /api without its prefix and /ws with the websocket scheme', () => {
@@ -215,9 +229,10 @@ test('the vhost sets the content security policy for HTML', () => {
 });
 
 test('the vhost sets the other security headers and TLS from variables', () => {
-  assert.match(vhost, /Header always set Strict-Transport-Security "max-age=\d+"/);
+  assert.match(vhost, /Header always set Strict-Transport-Security "max-age=\d+; includeSubDomains"/);
   assert.match(vhost, /Header always set X-Content-Type-Options "nosniff"/);
   assert.match(vhost, /Header always set Referrer-Policy "[a-z-]+"/);
+  assert.match(vhost, /^\s*Header always set Cross-Origin-Opener-Policy "same-origin"$/m);
   const permissions = /Header always set Permissions-Policy "(.*)"/.exec(vhost);
   assert.ok(permissions, 'Permissions-Policy is set');
   assert.match(permissions[1], /camera=\(self \\"\$\{JITSI_ORIGIN\}\\"\)/);
@@ -225,6 +240,25 @@ test('the vhost sets the other security headers and TLS from variables', () => {
   assert.match(vhost, /^\s*SSLCertificateFile \$\{TLS_CERT_FILE\}$/m);
   assert.match(vhost, /^\s*SSLCertificateKeyFile \$\{TLS_KEY_FILE\}$/m);
   assert.match(vhost, /^\s*SSLProtocol -all \+TLSv1\.2 \+TLSv1\.3$/m);
+});
+
+test('the frame-src policy uses the Jitsi origin variable', () => {
+  assert.match(vhost, /frame-src 'self' \$\{JITSI_ORIGIN\}/);
+  assert.doesNotMatch(vhost, /frame-src[^;"]*jitsi\.example|frame-src[^;"]*clinic\.example/);
+});
+
+test('the example JITSI_ORIGIN is a different host from SERVER_NAME, and both are example.test names', () => {
+  const vars = read('web', 'usr', 'share', 'doctor7', 'web.vars.conf.example');
+  const value = (name) => {
+    const match = new RegExp(`^Define ${name} (\\S+)$`, 'm').exec(vars);
+    assert.ok(match, `${name} is defined`);
+    return match[1];
+  };
+  const jitsiHost = new URL(value('JITSI_ORIGIN')).hostname;
+  assert.notEqual(jitsiHost, value('SERVER_NAME'));
+  assert.equal(jitsiHost, 'meet.demo.example.test');
+  assert.equal(value('SERVER_NAME'), 'demo.example.test');
+  assert.match(vars, /JITSI_ORIGIN is the origin of the Jitsi server, not the origin of the site/);
 });
 
 test('every variable of the vhost is defined in the variables example', () => {

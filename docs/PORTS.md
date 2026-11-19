@@ -17,8 +17,8 @@ setting changes each one.
 | API | `meet.googleapis.com` | 443 | TCP (HTTPS) | Create Google Meet spaces. Only with `VIDEO_PROVIDER=meet`. |
 | API | `oauth2.googleapis.com` | 443 | TCP (HTTPS) | Service account access token. Only with `VIDEO_PROVIDER=meet`. |
 | Browser | Jitsi server | 443 | TCP (HTTPS, WSS) | Jitsi page in the `iframe` and its signaling. Only with Jitsi. |
-| Browser | Jitsi videobridge | 10000 | UDP | Jitsi audio and video. Only with Jitsi. |
-| Browser | Jitsi videobridge | 4443 | TCP | Jitsi media fallback when UDP is blocked. Only with Jitsi. |
+| Browser | Jitsi videobridge | 10000 | UDP | Jitsi audio and video. Only with Jitsi. Open to the Internet. |
+| Browser | Jitsi videobridge | 4443 | TCP | Jitsi media fallback when UDP is blocked. Only with Jitsi. The verified demo install does not open it (see `docs/DEMO.md`, Node 3). |
 | Browser | Jitsi TURN server | 3478 | UDP | STUN and TURN, when the Jitsi installation has one. |
 | Browser | Jitsi TURN server | 5349 | TCP (TLS) | TURN over TLS, when the Jitsi installation has one. |
 | Browser | Google Meet | 443 | TCP (HTTPS) | The Meet link opens in a new tab. Media ports are Google's. See Google's network requirements. |
@@ -35,8 +35,8 @@ setting changes each one.
   go into `API_UPSTREAM` in `/etc/doctor7/web.vars.conf`.
 - MariaDB runs on its own node or service. Allow port 3306 only from the API
   host. This package does not open it.
-- Open to the Internet: 80, 443 (Apache), and the Jitsi ports when Jitsi is
-  used. Keep 3000, 3306 and 22 closed to the Internet.
+- Open to the Internet: 80 and 443 (Apache), and 10000/udp for Jitsi media when
+  Jitsi is used. Keep 3000, 3306 and 22 closed to the Internet.
 - The `connect-src` and `frame-src` rules of the content policy allow only the
   site itself (`wss://${SERVER_NAME}`) and the Jitsi origin. A different
   address for either one needs a change in `web.vars.conf`.

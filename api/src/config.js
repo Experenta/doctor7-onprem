@@ -4,6 +4,7 @@ const { loadAuthConfig } = require('./auth/config');
 const { loadVideoConfig } = require('./video/config');
 const { PROVIDER_NAMES } = require('./video/provider');
 const { parseRetentionDays } = require('./chat/purge');
+const { loadSecurityConfig } = require('./security/config');
 
 // Every runtime setting is read here, at startup. Secrets have no defaults in
 // code. An error names the variable and never prints its value, because values
@@ -22,8 +23,8 @@ function readInteger(env, name, fallback, { min, max }) {
   return value;
 }
 
-// video/config.js quotes the rejected provider name in its own message. This
-// check runs first, so a wrong name stops startup without repeating it.
+// video/config.js also refuses a wrong provider without repeating it. This
+// check runs first and gives the same message.
 function loadVideoSettings(env) {
   const provider = env.VIDEO_PROVIDER;
   if (provider !== undefined && provider !== '' && !PROVIDER_NAMES.includes(provider)) {
@@ -35,6 +36,15 @@ function loadVideoSettings(env) {
 // Reads the settings of the whole process. DATABASE_URL is not required here, so
 // the API can be loaded without a database. start() calls requireDatabaseUrl.
 function loadConfig(env = process.env) {
+  const auth = loadAuthConfig(env);
+  // A production server never runs without sign-in. Without OIDC settings the
+  // API would start with the probes only, which hides a missing configuration.
+  if (env.NODE_ENV === 'production' && !auth.enabled) {
+    throw new Error(
+      'NODE_ENV=production requires sign-in: set OIDC_ISSUER, OIDC_CLIENT_ID, and OIDC_REDIRECT_URI.'
+    );
+  }
+  const video = loadVideoSettings(env);
   return {
     host: env.HOST || '127.0.0.1',
     port: readInteger(env, 'PORT', 3000, { min: 1, max: 65535 }),
@@ -45,8 +55,12 @@ function loadConfig(env = process.env) {
       windowMs: readInteger(env, 'RATE_LIMIT_WINDOW_MS', 60 * 1000, { min: 1, max: 86400000 }),
       limit: readInteger(env, 'RATE_LIMIT_MAX', 120, { min: 1, max: 1000000 }),
     },
-    auth: loadAuthConfig(env),
-    video: loadVideoSettings(env),
+    auth,
+    video,
+    security: loadSecurityConfig(env, {
+      redirectUri: auth.enabled ? auth.redirectUri : undefined,
+      jitsiBaseUrl: video.jitsi ? video.jitsi.baseUrl : undefined,
+    }),
     chat: { retentionDays: parseRetentionDays(env.CHAT_RETENTION_DAYS) },
   };
 }

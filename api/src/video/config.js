@@ -88,7 +88,7 @@ function loadVideoConfig(env = process.env) {
   const selected = text(env, 'VIDEO_PROVIDER');
   if (selected !== undefined && !PROVIDER_NAMES.includes(selected)) {
     throw new Error(
-      `VIDEO_PROVIDER must be one of: ${PROVIDER_NAMES.join(', ')}. Got ${JSON.stringify(selected.slice(0, 40))}.`
+      `VIDEO_PROVIDER must be one of: ${PROVIDER_NAMES.join(', ')}.`
     );
   }
 
