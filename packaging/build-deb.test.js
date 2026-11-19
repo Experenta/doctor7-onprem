@@ -743,3 +743,165 @@ test('build() takes the version from D7_VERSION and writes the version file into
 test('versionFileText writes the two lines that the API reads', () => {
   assert.equal(versionFileText('1.2.3-1', '2026-11-19T06:53:53.715Z'), 'version=1.2.3-1\nbuild-date=2026-11-19T06:53:53.715Z\n');
 });
+
+
+
+// ---- Nightly reset of the demo database (K-37) ------------------------------
+
+const RESET_UNIT_DIR = ['demo', 'usr', 'lib', 'systemd', 'system'];
+const resetService = read(...RESET_UNIT_DIR, 'doctor7-demo-reset.service');
+const resetTimer = read(...RESET_UNIT_DIR, 'doctor7-demo-reset.timer');
+const idpUnitText = read(...RESET_UNIT_DIR, 'doctor7-mock-idp.service');
+const sectionOf = (text, name) => {
+  const match = new RegExp(`^\\[${name}\\]\\n([\\s\\S]*?)(?=^\\[|(?![\\s\\S]))`, 'm').exec(text);
+  return match ? match[1] : '';
+};
+const runLines = (text) => text.split('\n').filter((line) => !/^\s*(#|echo\b)/.test(line)).join('\n');
+const HARDENING_NAMES = [
+  'NoNewPrivileges', 'ProtectSystem', 'ProtectHome', 'PrivateTmp', 'PrivateDevices',
+  'ProtectKernelTunables', 'ProtectKernelModules', 'ProtectControlGroups', 'RestrictSUIDSGID',
+  'RestrictRealtime', 'LockPersonality', 'CapabilityBoundingSet', 'AmbientCapabilities',
+  'RestrictAddressFamilies', 'SystemCallArchitectures',
+];
+
+test('the reset service is a oneshot that runs as an unprivileged user and reads the demo settings file', () => {
+  const service = sectionOf(resetService, 'Service');
+  assert.match(service, /^Type=oneshot$/m);
+  assert.match(service, /^User=doctor7-reset$/m);
+  assert.match(service, /^Group=doctor7-reset$/m);
+  assert.doesNotMatch(resetService, /^(User|Group)=root$/m);
+  assert.match(service, /^EnvironmentFile=\/etc\/doctor7\/demo-reset\.env$/m);
+  assert.match(service, /^ExecStart=\/usr\/lib\/doctor7\/start-reset\.sh$/m);
+  assert.match(service, /^WorkingDirectory=\/usr\/lib\/doctor7\/seed$/m);
+  assert.match(resetService, /demo only/i);
+  assert.match(resetService, /do not run it/i);
+  assert.match(resetService, /disabled and stopped/i);
+});
+
+test('the reset service has no install section, so only its timer can start it at a fixed time', () => {
+  assert.equal(sectionOf(resetService, 'Install'), '');
+  assert.doesNotMatch(resetService, /WantedBy|RequiredBy|Alias=|Also=/);
+  assert.doesNotMatch(resetService, /^Environment=.*(DEMO_MODE|DEMO_RESET_CONFIRM|DEMO_RESET_DATABASE_URL)/m);
+});
+
+test('the reset service has the hardening of the identity provider unit, with the same values', () => {
+  const value = (text, name) => new RegExp(`^${name}=(.*)$`, 'm').exec(sectionOf(text, 'Service'))?.[1];
+  for (const name of HARDENING_NAMES) {
+    assert.notEqual(value(idpUnitText, name), undefined, `${name} is in the identity provider unit`);
+    assert.equal(value(resetService, name), value(idpUnitText, name), name);
+  }
+});
+
+test('the reset timer runs at 04:00 America/Bogota every day, does not make up missed runs, and starts the service', () => {
+  const timer = sectionOf(resetTimer, 'Timer');
+  assert.match(timer, /^OnCalendar=\*-\*-\* 04:00:00 America\/Bogota$/m);
+  assert.equal((timer.match(/^OnCalendar=/gm) || []).length, 1);
+  assert.match(timer, /^Persistent=false$/m);
+  assert.match(timer, /^Unit=doctor7-demo-reset\.service$/m);
+  assert.doesNotMatch(timer, /OnBootSec|OnStartupSec|OnActiveSec|OnUnitActiveSec|RandomizedDelaySec/);
+  assert.match(sectionOf(resetTimer, 'Install'), /^WantedBy=timers\.target$/m);
+  assert.doesNotMatch(sectionOf(resetTimer, 'Install'), /^(Also|Alias|RequiredBy)=/m);
+  assert.match(resetTimer, /disabled by default/i);
+  assert.match(resetTimer, /systemctl enable --now doctor7-demo-reset\.timer/);
+});
+
+test('the maintainer scripts never enable or start the reset, and create its user and its settings file once', () => {
+  const postinst = read('demo', 'DEBIAN', 'postinst');
+  const run = runLines(postinst);
+  assert.doesNotMatch(run, /systemctl\s+(enable|reenable|start|restart)\b/);
+  assert.doesNotMatch(run, /systemctl\s+(try-restart|reload-or-restart)\s+"\$RESET_UNIT"/);
+  assert.match(postinst, /^RESET_USER=doctor7-reset$/m);
+  assert.match(postinst, /getent passwd "\$RESET_USER" >\/dev\/null/);
+  assert.match(postinst, /adduser --system --group --home \/nonexistent --no-create-home "\$RESET_USER"/);
+  assert.match(
+    postinst,
+    /if \[ ! -e "\$RESET_ENV_FILE" \]; then\n\s*install -m 0640 -o root -g "\$RESET_USER" "\$SHARE_DIR\/demo-reset\.env\.example" "\$RESET_ENV_FILE"\n\s*fi/,
+  );
+  assert.match(postinst, /systemctl enable --now \$RESET_TIMER/, 'the message names the command that turns it on');
+
+  const prerm = runLines(read('demo', 'DEBIAN', 'prerm'));
+  assert.match(prerm, /systemctl stop "\$RESET_TIMER"/);
+  assert.match(prerm, /systemctl disable "\$RESET_TIMER"/);
+  assert.doesNotMatch(prerm, /systemctl\s+(enable|start|restart)\b/);
+
+  const postrm = read('demo', 'DEBIAN', 'postrm');
+  assert.match(postrm, /^RESET_ENV_FILE=\/etc\/doctor7\/demo-reset\.env$/m);
+  assert.match(postrm, /rm -f "\$MEET_ENV_FILE" "\$MEET_API_ENV_FILE" "\$MEET_PUBLIC_KEY" "\$RESET_ENV_FILE"/);
+});
+
+test('the reset settings template holds names only, so the confirmation is never on by default', () => {
+  const text = read('demo', 'usr', 'share', 'doctor7', 'demo-reset.env.example');
+  const active = text.split('\n').filter((line) => line.trim() !== '' && !line.startsWith('#'));
+  assert.deepEqual(active, ['DEMO_MODE=', 'DEMO_RESET_CONFIRM=', 'DEMO_RESET_DATABASE_URL=']);
+  assert.match(text, /Demo only\. Do not install this on a production server\./);
+  assert.doesNotMatch(text, /^[^#\n]*erase-demo-data/m, 'the confirmation value is only named in a comment');
+  assert.doesNotMatch(text, /mysql|mariadb:\/\/|@/i);
+});
+
+test('start-reset.sh finds Node.js like the identity provider and runs the reset from the seed folder', () => {
+  const script = read('demo', 'usr', 'lib', 'doctor7', 'start-reset.sh');
+  assert.match(script, /^#!\/bin\/bash$/m);
+  assert.match(script, /\. "\$LIB_DIR\/resolve-node\.sh"/);
+  assert.match(script, /NODE=\$\(d7_resolve_node\) \|\| \{/);
+  assert.match(script, /cd "\$LIB_DIR\/seed"/);
+  assert.match(script, /exec "\$NODE" reset-demo\.js$/m);
+  assert.ok(!script.includes('\r'), 'no carriage returns');
+});
+
+test('no credential, URL, or host is written in the reset units, script, or template', () => {
+  const files = [
+    resetService,
+    resetTimer,
+    read('demo', 'usr', 'lib', 'doctor7', 'start-reset.sh'),
+    read('demo', 'usr', 'share', 'doctor7', 'demo-reset.env.example'),
+  ];
+  for (const text of files) {
+    assert.doesNotMatch(text, /https?:\/\/|mysql:\/\/|mariadb:\/\/|password|passwd|secret|token/i);
+  }
+});
+
+test('the demo package tree holds the reset, the seed code it needs, its units, and nothing else of seed/', (t) => {
+  const dir = makeTemp(t);
+  const [demo] = build({ root: ROOT, out: path.join(dir, 'out'), packages: ['demo'], version: '1.2.3-1', installDeps: false, log: () => {} });
+  const tree = (...parts) => path.join(demo.tree, ...parts);
+  for (const parts of [
+    ['usr', 'lib', 'systemd', 'system', 'doctor7-demo-reset.service'],
+    ['usr', 'lib', 'systemd', 'system', 'doctor7-demo-reset.timer'],
+    ['usr', 'lib', 'doctor7', 'start-reset.sh'],
+    ['usr', 'share', 'doctor7', 'demo-reset.env.example'],
+  ]) {
+    assert.ok(fs.existsSync(tree(...parts)), parts.join('/'));
+  }
+  const seedDir = tree('usr', 'lib', 'doctor7', 'seed');
+  const packaged = walk(seedDir).map((file) => path.relative(seedDir, file).split(path.sep).join('/')).sort();
+  assert.deepEqual(packaged, [
+    'lib/collections.js', 'lib/generator.js', 'lib/instant.js', 'lib/loader.js',
+    'lib/mariadb-store.js', 'lib/reset.js', 'reset-demo.js',
+  ]);
+  assert.ok(packaged.every((rel) => !rel.endsWith('.test.js') && !rel.startsWith('test/')));
+
+  // Every relative require of the packaged files is in the package. The only other module is mysql2.
+  for (const rel of packaged) {
+    const text = fs.readFileSync(path.join(seedDir, rel), 'utf8');
+    assert.ok(!text.includes('\r'), `${rel} has no carriage returns`);
+    for (const [, target] of text.matchAll(/require\('([^']+)'\)/g)) {
+      if (target.startsWith('node:') || target === 'mysql2/promise') continue;
+      assert.ok(target.startsWith('.'), `${rel} requires ${target}, which the package does not hold`);
+      const resolved = path.join(path.dirname(path.join(seedDir, rel)), `${target}.js`);
+      assert.ok(fs.existsSync(resolved), `${rel} requires ${target}, which is not in the package`);
+    }
+  }
+  // The settings file is made on the host, never shipped.
+  assert.ok(!fs.existsSync(tree('etc', 'doctor7', 'demo-reset.env')));
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(tree('usr', 'lib', 'doctor7', 'start-reset.sh')).mode & 0o777, 0o755);
+    assert.equal(fs.statSync(tree('usr', 'lib', 'systemd', 'system', 'doctor7-demo-reset.timer')).mode & 0o777, 0o644);
+  }
+});
+
+test('the builder names the seed files that the demo reset needs when they are missing', (t) => {
+  const dir = makeTemp(t);
+  const problems = checkInputs({ root: dir, packages: ['demo'], webDist: path.join(dir, 'dist'), installDeps: false });
+  assert.ok(problems.some((line) => /seed.reset-demo\.js/.test(line)), 'reset-demo.js');
+  assert.ok(problems.some((line) => /seed.lib.reset\.js/.test(line)), 'lib/reset.js');
+});

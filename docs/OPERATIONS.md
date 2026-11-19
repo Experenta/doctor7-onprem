@@ -20,7 +20,7 @@ of the service, never in this repository.
 |---|---|
 | `doctor7-api` | API code with production dependencies, `doctor7-api.service`, the chat purge service and timer, backup and restore commands, the `doctor7` service user. |
 | `doctor7-web` | Static files of the web application and the Apache virtual host. |
-| `doctor7-demo` | Demo only. Mock identity provider, its unit, the `/idp/` fragment of the virtual host, and the Google Meet simulator with its unit. Not in `all`. See the Demo package section. |
+| `doctor7-demo` | Demo only. Mock identity provider, its unit, the `/idp/` fragment of the virtual host, the Google Meet simulator with its unit, and the nightly reset of the demo database with its service and timer. Not in `all`. See the Demo package section. |
 
 | Path | Content |
 |---|---|
@@ -114,6 +114,7 @@ never overwrites it.
 | `/etc/doctor7/backup.conf` | local value | `doctor7-api` | postinst, from `backup.conf.example`, when missing | Not touched. |
 | `/etc/doctor7/backup.cnf` | local value | none | the administrator, from `backup.cnf.example` | Not touched. It holds the database password. |
 | `/etc/doctor7/idp-demo.env` | local value | `doctor7-demo` | postinst, from `idp-demo.env.example`, when missing | Not touched. |
+| `/etc/doctor7/demo-reset.env` | local value | `doctor7-demo` | postinst, from `demo-reset.env.example`, when missing | Not touched. It holds the database credential of the reset once filled in. |
 | `/etc/doctor7/vhost-demo.conf` | package file, not a conffile | `doctor7-demo` | the package | Replaced on each install. It holds no value, so no local edit is kept. |
 | `/usr/share/doctor7/*.example` | package file | all | the package | Replaced on each install. They are templates. |
 
@@ -464,3 +465,32 @@ used. The package also depends on `openssl`.
   `/etc/systemd/system/doctor7-api.service.d/`. `docs/DEMO.md` lists the commands.
 - `apt-get remove` stops and disables the simulator unit. `apt-get purge` also removes the three generated
   files. It keeps the `doctor7-meet` user.
+
+### Nightly reset of the demo database (demo only)
+
+The same package holds a reset that erases the rows that visitors create in the demo database and loads
+the synthetic seed again. It deletes from every table except the audit log and the migration table. The
+audit log is append-only and is never deleted from. `docs/DEMO.md`, section "Nightly reset", explains what
+is reset, the safeguards, and how to turn it on and off.
+
+- It installs `/usr/lib/doctor7/seed/` (the reset and the seed code that it needs), `/usr/lib/doctor7/start-reset.sh`,
+  the service `doctor7-demo-reset.service` (oneshot), and the timer `doctor7-demo-reset.timer`. The timer runs
+  the service every day at 04:00 America/Bogota, with `Persistent=false`. The package does not enable or
+  start either one. On the demo host, run `systemctl enable --now doctor7-demo-reset.timer`. To stop it, run
+  `systemctl disable --now doctor7-demo-reset.timer`.
+- The service runs as the system user `doctor7-reset` (created when missing), with the hardening of the identity
+  provider unit. It uses the Node.js lookup of `doctor7-api`, and it reads `mysql2` from `/usr/lib/doctor7/node_modules`.
+- Settings: `/etc/doctor7/demo-reset.env`, mode 0640, group `doctor7-reset`, created from a template with names only.
+  An upgrade never replaces it. `apt-get purge` removes it.
+
+  | Variable | Meaning |
+  |---|---|
+  | `DEMO_MODE` | Must be exactly `1`, or the reset refuses to run. |
+  | `DEMO_RESET_CONFIRM` | Must be exactly `erase-demo-data`, or the reset refuses to run. It is set in this file only. |
+  | `DEMO_RESET_DATABASE_URL` | Address of a database account that may `SELECT`, `INSERT`, and `DELETE` in the demo database. It is not the API account, and the reset never reads `DATABASE_URL`. It holds a password. |
+  | `NODE_BIN` | Optional. A Node.js 22 or later, when none is at `/opt/node/current/bin/node` or in `PATH`. |
+
+- The reset also refuses when the database name does not end in `_demo`. A production database must not have
+  that suffix, and the package must not be installed on a production server.
+- `apt-get remove` stops and disables the timer and the service. The install and an upgrade never start the service,
+  because a run erases data.

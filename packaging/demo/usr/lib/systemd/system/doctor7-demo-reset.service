@@ -1,0 +1,40 @@
+# doctor7-demo-reset: nightly reset of the demo database to the synthetic seed. Demo only, never production.
+#
+# This unit ERASES the rows of every table of the demo database except the audit log and the
+# migration table, then loads the synthetic seed again. Do not run it on a production server.
+# The script behind it refuses to run unless /etc/doctor7/demo-reset.env sets DEMO_MODE=1,
+# DEMO_RESET_CONFIRM=erase-demo-data, and DEMO_RESET_DATABASE_URL, and the database name ends in _demo.
+#
+# The package installs this unit and its timer disabled and stopped. An administrator turns the
+# nightly reset on, on the demo host only, with: systemctl enable --now doctor7-demo-reset.timer
+# The timer starts this unit. See docs/DEMO.md, section "Nightly reset".
+
+[Unit]
+Description=doctor7 demo database reset (erases visitor data, demo only)
+After=network.target
+
+[Service]
+Type=oneshot
+User=doctor7-reset
+Group=doctor7-reset
+EnvironmentFile=/etc/doctor7/demo-reset.env
+ExecStart=/usr/lib/doctor7/start-reset.sh
+WorkingDirectory=/usr/lib/doctor7/seed
+TimeoutStartSec=300
+
+# Hardening. The reset writes nothing to disk and needs no privileges.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallArchitectures=native

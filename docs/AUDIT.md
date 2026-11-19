@@ -141,6 +141,7 @@ Limits of this control:
   change or drop `audit_log`. Keep it separate from the application account.
 - A database administrator can always change the table. Protecting against an
   administrator needs a copy of the log outside the server. That is not built.
+- The nightly reset of the demo (`docs/DEMO.md`) does not delete the audit log, so the log of the demo keeps growing.
 
 ## Failures
 

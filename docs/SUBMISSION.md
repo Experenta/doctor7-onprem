@@ -39,8 +39,8 @@ a service account, and Kiro.
 
 ## How we used Kiro
 
-Kiro CLI agents built the project. 36 tasks were given to Kiro agents: K-01 to K-36 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task
-had a written contract and its own branch. From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, k-29, k-30, k-31, k-32, k-33, k-34, k-35, and k-36. There is no folder for K-11, K-15, K-25, and K-27. The repository has steering files in `.kiro/steering/` and
+Kiro CLI agents built the project. 37 tasks were given to Kiro agents: K-01 to K-37 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task
+had a written contract and its own branch. From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, k-29, k-30, k-31, k-32, k-33, k-34, k-35, k-36, and k-37. There is no folder for K-11, K-15, K-25, and K-27. The repository has steering files in `.kiro/steering/` and
 two hook files in `.kiro/hooks/`. The hooks have not been tested in the Kiro IDE. The restricted role is in `.kiro/agents/implementer.json`. It is a cleaned English copy of the role that the project manager's Kiro CLI runs used for the tasks. The original lives in the project manager's private registry and also allows commands for other stacks, so the command list in this repository is a subset of it. The role was used with the Kiro CLI, not the IDE. The copy was accepted by the CLI (`kiro-cli agent validate`, exit code 0, 2026-11-19); the tasks ran with the original file. No other agent file, hook, or MCP server is claimed.
 
 A director agent, supervised by a person, reviewed each task. Before each pull request it ran

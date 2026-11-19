@@ -1,0 +1,17 @@
+# doctor7-demo-reset.timer: starts doctor7-demo-reset.service every day at 04:00 in Bogota. Demo only.
+#
+# The timer is disabled by default: the package installs it disabled and stopped. An administrator
+# enables it on the demo host only, with: systemctl enable --now doctor7-demo-reset.timer
+# To stop the nightly reset: systemctl disable --now doctor7-demo-reset.timer
+# A run that was missed while the host was off is not made up (Persistent=false).
+
+[Unit]
+Description=doctor7 demo database reset, every day at 04:00 America/Bogota (demo only)
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 America/Bogota
+Persistent=false
+Unit=doctor7-demo-reset.service
+
+[Install]
+WantedBy=timers.target

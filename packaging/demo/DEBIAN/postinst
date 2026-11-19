@@ -18,6 +18,11 @@ MEET_SA_EMAIL=meet-sa@doctor7-test.example.test
 MEET_DELEGATED_USER=clinic.organizer@example.test
 MEET_UNIT=doctor7-mock-google.service
 
+# The nightly reset of the demo database (K-37). Demo only. Nothing here enables or starts it.
+RESET_USER=doctor7-reset
+RESET_ENV_FILE=/etc/doctor7/demo-reset.env
+RESET_TIMER=doctor7-demo-reset.timer
+
 systemd_running() {
   [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
 }
@@ -88,11 +93,20 @@ case "$1" in
       adduser --system --group --home /nonexistent --no-create-home "$MEET_USER"
     fi
 
+    if ! getent passwd "$RESET_USER" >/dev/null 2>&1; then
+      adduser --system --group --home /nonexistent --no-create-home "$RESET_USER"
+    fi
+
     install -d -m 0755 -o root -g root "$ENV_DIR"
 
     # Create the settings file from the template. Never overwrite it.
     if [ ! -e "$ENV_FILE" ]; then
       install -m 0640 -o root -g "$IDP_USER" "$SHARE_DIR/idp-demo.env.example" "$ENV_FILE"
+    fi
+
+    # The reset settings hold a database credential once filled in. Same rule: never overwrite.
+    if [ ! -e "$RESET_ENV_FILE" ]; then
+      install -m 0640 -o root -g "$RESET_USER" "$SHARE_DIR/demo-reset.env.example" "$RESET_ENV_FILE"
     fi
 
     generate_meet_files
@@ -103,10 +117,13 @@ case "$1" in
         # Upgrade: restart the services only when they already run. Never start them.
         systemctl try-restart "$UNIT" >/dev/null 2>&1 || true
         systemctl try-restart "$MEET_UNIT" >/dev/null 2>&1 || true
+        # The timer only. The reset service is never restarted, because that would erase data.
+        systemctl try-restart "$RESET_TIMER" >/dev/null 2>&1 || true
       else
         echo "doctor7-demo: installed. Nothing is enabled or started." >&2
         echo "doctor7-demo: edit $ENV_FILE, then run: systemctl enable --now $UNIT" >&2
         echo "doctor7-demo: for the Meet outage switch, follow docs/DEMO.md, then run: systemctl enable --now $MEET_UNIT" >&2
+        echo "doctor7-demo: the nightly reset stays off. To use it, fill in $RESET_ENV_FILE, then run: systemctl enable --now $RESET_TIMER" >&2
       fi
     fi
     ;;

@@ -9,8 +9,8 @@ The public demo lets a visitor sign in without a real account. The demo host run
 the mock provider behind Apache, under the path `/idp/`. The API checks the
 provider's tokens in the same way it does in production.
 
-The demo data is synthetic. The accounts and records are invented. A reset is
-manual: the Reset section describes it.
+The demo data is synthetic. The accounts and records are invented. The data returns to
+the seed by hand (the Reset section) or every night (the Nightly reset section).
 
 ## Accounts
 
@@ -138,8 +138,76 @@ routing rule, so a request to `/idp/` is not answered with `index.html`.
 ## Reset
 
 The provider keeps no state. Its codes and signing key live in memory, so a restart
-clears them. To reset the data, load a new seed into an empty database, as
-`docs/MIGRATION.md` describes.
+clears them. To reset the data by hand, load a new seed into an empty database, as
+`docs/MIGRATION.md` describes. To reset it every night, use the next section.
+
+## Nightly reset
+
+**Demo only. This erases data. Never enable it on a production server.**
+
+The package `doctor7-demo` holds a reset that returns the demo database to the synthetic seed. It is
+off until an administrator turns it on. The command is `seed/reset-demo.js`, installed as
+`/usr/lib/doctor7/seed/reset-demo.js`. The service `doctor7-demo-reset.service` (a oneshot) runs it
+as the system user `doctor7-reset`. The timer `doctor7-demo-reset.timer` starts the service every day
+at 04:00 America/Bogota. A run missed while the host was off is not made up.
+
+### What is reset, and what is not
+
+| Reset | Not reset |
+|---|---|
+| Appointments, video meetings, chat messages, and consultation records that visitors created. | The audit log (`audit_log`). It is append-only, so it is never deleted from, and it keeps growing. |
+| Sessions and sign-in attempts. Every visitor is signed out. | The migration table (`schema_migrations`). |
+| Users and centers, which the seed loads again with its fixed ids. | Any table whose name starts with `audit`. |
+| Every table added to the schema later (clients, records, forms, revisions, and so on). | The schema itself. The reset never drops or truncates a table. |
+
+The list of tables is read from the database (`information_schema`), not written in the script. A
+table added by a later migration is emptied with no change to the script. The seed is the one of
+`seed/generate.js`, built for the day of the run, so the appointments stay around the current date. The
+seed audit entries are not loaded again, because the audit rows stay.
+
+### Safeguards
+
+The script stops with exit code 1 and changes nothing unless all of these hold:
+
+1. `DEMO_MODE=1` is in its environment.
+2. `DEMO_RESET_CONFIRM=erase-demo-data` is in its environment. This value is set only in
+   `/etc/doctor7/demo-reset.env`, never by default.
+3. `DEMO_RESET_DATABASE_URL` is set. It is the address of a database account that is not the API
+   account. If it is missing, the script refuses. It never falls back to `DATABASE_URL`.
+4. The name of the database ends in `_demo`.
+5. The database has the table `schema_migrations`.
+
+It never deletes from `audit_log` or `schema_migrations`. Foreign key checks are off only around the
+delete transaction and are on again when it ends. It prints the name and the deleted row count of every
+table, the loaded row counts of every collection, and the audit and migration row counts before and
+after. It never prints the database address or a driver message. Exit code 2 means the reset finished
+but some seed rows were rejected.
+
+### Turn it on
+
+1. Create a database account for the reset, apart from the API account. It needs `SELECT`, `INSERT`,
+   and `DELETE` on the demo database, whose name ends in `_demo`. `information_schema` lists only the
+   tables that the account can see, so the grant covers the whole database. The script itself never
+   deletes from the audit log, but the account can, so give it to this script only.
+2. Edit `/etc/doctor7/demo-reset.env` (mode 0640, group `doctor7-reset`, created by the package from a
+   template with names only). Set `DEMO_MODE=1`, `DEMO_RESET_CONFIRM=erase-demo-data`, and
+   `DEMO_RESET_DATABASE_URL` to the address of that account. The address uses the TCP form, with a host
+   and the database name, such as `mysql://<user>:<password>@<db-host>/<name>_demo`.
+3. Try it once: `sudo systemctl start doctor7-demo-reset.service`, then
+   `journalctl -u doctor7-demo-reset.service`.
+4. Turn on the timer: `sudo systemctl enable --now doctor7-demo-reset.timer`. Check it with
+   `systemctl list-timers doctor7-demo-reset.timer`.
+
+### Turn it off
+
+`sudo systemctl disable --now doctor7-demo-reset.timer`. Remove `DEMO_RESET_CONFIRM` from
+`/etc/doctor7/demo-reset.env` as well, so that nobody starts the service by hand by mistake.
+`apt-get remove doctor7-demo` stops and disables the timer. `apt-get purge` also removes the settings
+file.
+
+Not verified in this repository: a run against a real MariaDB (the integration test needs
+`DATABASE_URL` and is skipped without it), the behavior of the units under systemd, and the install on
+the demo host.
 
 ## Demo-only Meet outage switch
 

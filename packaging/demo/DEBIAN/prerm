@@ -3,6 +3,8 @@ set -e
 
 UNIT=doctor7-mock-idp.service
 MEET_UNIT=doctor7-mock-google.service
+RESET_UNIT=doctor7-demo-reset.service
+RESET_TIMER=doctor7-demo-reset.timer
 
 systemd_running() {
   [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
@@ -13,9 +15,12 @@ case "$1" in
     if systemd_running; then
       systemctl stop "$UNIT" >/dev/null 2>&1 || true
       systemctl stop "$MEET_UNIT" >/dev/null 2>&1 || true
+      systemctl stop "$RESET_TIMER" >/dev/null 2>&1 || true
+      systemctl stop "$RESET_UNIT" >/dev/null 2>&1 || true
       if [ "$1" = "remove" ]; then
         systemctl disable "$UNIT" >/dev/null 2>&1 || true
         systemctl disable "$MEET_UNIT" >/dev/null 2>&1 || true
+        systemctl disable "$RESET_TIMER" >/dev/null 2>&1 || true
       fi
     fi
     ;;
