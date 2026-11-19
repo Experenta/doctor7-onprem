@@ -4,10 +4,20 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import ChatPanel from '../components/ChatPanel.jsx';
 import { FileIcon } from '../components/icons.jsx';
 import { ErrorState, Loaded } from '../components/States.jsx';
+import { Avatar, Button, StatusChip } from '../components/ui.jsx';
 import VideoPanel from '../components/VideoPanel.jsx';
 import { statusLabel } from '../lib/appointments.js';
 import { formatDateTime } from '../lib/format.js';
 import { useLoad } from '../lib/useLoad.js';
+
+function Participant({ id, tone }) {
+  return (
+    <span className="person">
+      <Avatar name={id} size="sm" tone={tone} />
+      <span className="person-id">{id}</span>
+    </span>
+  );
+}
 
 export default function AppointmentPage() {
   const { id } = useParams();
@@ -29,57 +39,74 @@ export default function AppointmentPage() {
   }
 
   return (
-    <Loaded state={state} errorTitle="The appointment could not load">
+    <Loaded state={state} errorTitle="The appointment could not load" skeleton="appointment">
       {(appointment) => (
         <>
-          <div className="page-head">
-            <h1>Appointment</h1>
-            <div className="actions">
-              <Link className="btn btn-secondary" to="/appointments">
-                Back to appointments
-              </Link>
-              {isProfessional && (
-                <Link className="btn btn-primary" to={`/appointments/${appointment.id}/consultation`}>
-                  <FileIcon />
-                  Write consultation
-                </Link>
+          <header className="appt-head">
+            <div className="appt-head-top">
+              <h1>Appointment</h1>
+              <div className="actions">
+                <Button variant="secondary" to="/appointments">
+                  Back to appointments
+                </Button>
+                {isProfessional && (
+                  <Button icon={FileIcon} to={`/appointments/${appointment.id}/consultation`}>
+                    Write consultation
+                  </Button>
+                )}
+              </div>
+            </div>
+            <dl className="appt-meta">
+              <div className="appt-meta-item">
+                <dt>Starts</dt>
+                <dd>{formatDateTime(appointment.startsAt)}</dd>
+              </div>
+              <div className="appt-meta-item">
+                <dt>Ends</dt>
+                <dd>{formatDateTime(appointment.endsAt)}</dd>
+              </div>
+              <div className="appt-meta-item">
+                <dt>Status</dt>
+                <dd>
+                  <StatusChip status={appointment.status}>{statusLabel(appointment.status)}</StatusChip>
+                </dd>
+              </div>
+              <div className="appt-meta-item">
+                <dt>Professional</dt>
+                <dd>
+                  <Participant id={appointment.professionalId} tone="purple" />
+                </dd>
+              </div>
+              <div className="appt-meta-item">
+                <dt>Client</dt>
+                <dd>
+                  <Participant id={appointment.clientId} tone="turquoise" />
+                </dd>
+              </div>
+            </dl>
+          </header>
+
+          {canChat && (
+            <div className="appt-workspace">
+              <VideoPanel
+                appointmentId={appointment.id}
+                canStart={isProfessional}
+                appointmentStatus={appointment.status}
+              />
+              {appointment.status === 'scheduled' ? (
+                <ChatPanel appointmentId={appointment.id} userId={user.id} />
+              ) : (
+                <section className="card chat-card" aria-labelledby="chat-title">
+                  <div className="card-head">
+                    <h2 id="chat-title">Chat</h2>
+                  </div>
+                  <p>
+                    The chat is closed because this appointment is {appointment.status}. Chat opens only for
+                    scheduled appointments.
+                  </p>
+                </section>
               )}
             </div>
-          </div>
-
-          <section className="panel" aria-labelledby="details-title">
-            <h2 id="details-title">Details</h2>
-            <dl className="details">
-              <dt>Starts</dt>
-              <dd>{formatDateTime(appointment.startsAt)}</dd>
-              <dt>Ends</dt>
-              <dd>{formatDateTime(appointment.endsAt)}</dd>
-              <dt>Status</dt>
-              <dd>
-                <span className="badge">{statusLabel(appointment.status)}</span>
-              </dd>
-              <dt>Professional</dt>
-              <dd>{appointment.professionalId}</dd>
-              <dt>Client</dt>
-              <dd>{appointment.clientId}</dd>
-            </dl>
-          </section>
-
-          {(isProfessional || user.role === 'client') && (
-            <VideoPanel appointmentId={appointment.id} canStart={isProfessional} appointmentStatus={appointment.status} />
-          )}
-
-          {canChat && appointment.status === 'scheduled' && (
-            <ChatPanel appointmentId={appointment.id} userId={user.id} />
-          )}
-          {canChat && appointment.status !== 'scheduled' && (
-            <section className="panel" aria-labelledby="chat-title">
-              <h2 id="chat-title">Chat</h2>
-              <p>
-                The chat is closed because this appointment is {appointment.status}. Chat opens only for
-                scheduled appointments.
-              </p>
-            </section>
           )}
         </>
       )}

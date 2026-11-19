@@ -68,6 +68,81 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
+// Initials for the avatar of an account: the first letters of the first and the last word of
+// the name, or the first two letters of a single word. Only letters and digits are used.
+function initialsOf(name) {
+  const words = String(name || '')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean);
+  if (words.length === 0) return '?';
+  const letters = words.length === 1 ? words[0].slice(0, 2) : `${words[0][0]}${words[words.length - 1][0]}`;
+  return letters.toUpperCase();
+}
+
+// The style of the sign-in page. The page lives in the world of the web client: a left panel
+// with the brand gradient, a pale canvas, purple structure, turquoise as light, and one
+// magenta notice. The colors repeat tokens.css of the web client, because this page cannot
+// import it, and login-page.test.js compares the two. The page asks for nothing outside
+// itself: the content security policy allows an inline style and nothing else, so there is
+// no font file, no image, and no script. The fonts are the ones of the system.
+const LOGIN_CSS = `
+:root{--purple-950:#1E0F52;--purple-900:#2A1466;--purple-700:#482494;--purple-500:#6E4FC9;--purple-100:#ECE7F8;--purple-50:#F6F4FC;--turquoise-500:#18E4DC;--on-turquoise:#0B2A28;--magenta-600:#D800B0;--magenta-800:#9C0081;--magenta-100:#FBE1F6;--ink:#1B1535;--muted:#5C5778;--line:#E4DFF2;--white:#FFFFFF;--on-dark-muted:#CFC5EE;--gradient:linear-gradient(135deg,var(--purple-700),var(--magenta-600));--shadow:0 2px 12px rgba(30,15,82,.12);--shadow-raised:0 8px 24px rgba(30,15,82,.2);--motion:180ms}
+*{box-sizing:border-box}
+body{margin:0;background:var(--purple-50);color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.55;caret-color:var(--purple-700)}
+::selection{background:var(--purple-100);color:var(--ink)}
+.page{display:grid;min-height:100vh}
+.band{display:flex;flex-direction:column;justify-content:space-between;gap:2rem;padding:1.5rem 1.25rem 2rem;background:var(--gradient);color:var(--white)}
+.brand{display:flex;align-items:center;gap:.75rem}
+.glyph{width:2.5rem;height:2.5rem;flex:none}
+.glyph-tile{fill:var(--purple-950);stroke:var(--purple-500);stroke-width:1}
+.glyph-stroke{fill:none;stroke:var(--white);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.glyph-dot{fill:var(--turquoise-500)}
+.logotype{font-size:1.75rem;font-weight:800;letter-spacing:.01em;line-height:1}
+.logotype-seven{color:var(--turquoise-500)}
+.pitch{margin:0 0 .75rem;max-width:20ch;font-size:1.44rem;font-weight:800;line-height:1.25}
+.band-text{margin:0;max-width:34ch}
+.wrap{width:100%;max-width:46rem;margin:0 auto;padding:1.5rem 1rem 2.5rem}
+h1{margin:0 0 1rem;color:var(--purple-900);font-size:1.5rem;font-weight:800;line-height:1.25}
+p{margin:0 0 1rem;max-width:70ch}
+.notice{display:flex;gap:.75rem;align-items:flex-start;margin:0 0 1.25rem;padding:.875rem 1rem;border:1px solid var(--magenta-600);border-radius:12px;background:var(--magenta-100)}
+.notice svg{flex:none;width:1.25rem;height:1.25rem;margin-top:.15rem;fill:none;stroke:var(--magenta-800);stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.notice p{margin:0}
+.notice strong{color:var(--magenta-800)}
+.accounts{list-style:none;margin:0 0 1.25rem;padding:0;display:grid;gap:.875rem;grid-template-columns:minmax(0,1fr)}
+.account{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:.875rem;row-gap:.125rem;align-items:center;padding:1rem;border:1px solid var(--line);border-radius:16px;background:var(--white);box-shadow:var(--shadow);transition:box-shadow var(--motion)}
+.account:hover{box-shadow:var(--shadow-raised)}
+.avatar{grid-row:1 / span 2;display:grid;place-items:center;width:3rem;height:3rem;border-radius:50%;background:var(--purple-700);color:var(--white);font-size:1rem;font-weight:800;letter-spacing:.02em}
+.avatar-client{background:var(--turquoise-500);color:var(--on-turquoise)}
+.avatar-admin{background:var(--purple-950)}
+.avatar-auditor{background:var(--purple-500)}
+.avatar-none{background:var(--purple-100);color:var(--ink)}
+.account-name{margin:0;font-weight:800;overflow-wrap:anywhere}
+.account-meta{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;margin:0 0 .25rem;color:var(--muted);font-size:.9375rem;overflow-wrap:anywhere}
+.role{display:inline-block;padding:0 .625rem;border-radius:999px;background:var(--purple-100);color:var(--purple-700);font-size:.875rem;font-weight:700;line-height:1.5}
+.role-none{background:var(--line);color:var(--ink)}
+button{grid-column:1 / -1;display:block;width:100%;min-height:44px;margin-top:.5rem;padding:.625rem 1rem;border:1px solid var(--purple-700);border-radius:12px;background:var(--purple-700);color:var(--white);font:inherit;font-weight:700;cursor:pointer;transition:background-color var(--motion),box-shadow var(--motion)}
+button:hover{background:var(--purple-900);border-color:var(--purple-900)}
+button:active{background:var(--purple-950);border-color:var(--purple-950)}
+button:focus-visible{outline:3px solid var(--purple-500);outline-offset:2px}
+.muted{color:var(--muted)}
+@media (min-width:640px){.band{padding:2rem 2rem 2.5rem}}
+@media (min-width:640px) and (max-width:859px){.accounts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:860px){.page{grid-template-columns:2fr 3fr}.band{position:sticky;top:0;height:100vh;padding:2.5rem 2.5rem 3rem}.pitch{font-size:1.728rem}.wrap{margin:0;padding:2.5rem 2.5rem 3rem}}
+@media (min-width:1240px){.accounts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+`;
+
+// The glyph of the brand: a tile with a stroke and a dot. It is drawn here as inline SVG.
+const LOGIN_GLYPH =
+  '<svg class="glyph" viewBox="0 0 32 32" aria-hidden="true" focusable="false">' +
+  '<rect class="glyph-tile" x="1" y="1" width="30" height="30" rx="9"/>' +
+  '<path class="glyph-stroke" d="M10 11h12l-6.5 11"/>' +
+  '<circle class="glyph-dot" cx="22.5" cy="23" r="2.2"/></svg>';
+
+// A small alert sign for the notice, in the same single-stroke style as the web client.
+const NOTICE_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"/></svg>';
+
 function randomToken() {
   return crypto.randomBytes(32).toString('base64url');
 }
@@ -330,6 +405,7 @@ function createMockIdp({
         const roleClass = code === 'none' ? 'role role-none' : 'role';
         return (
           `<li class="account">` +
+          `<span class="avatar avatar-${code}" aria-hidden="true">${escapeHtml(initialsOf(user.name))}</span>` +
           `<p class="account-name">${escapeHtml(user.name)}</p>` +
           `<p class="account-meta"><span class="${roleClass}">${escapeHtml(ROLE_LABELS[code])}</span> ` +
           `<span>${escapeHtml(user.email)}</span></p>` +
@@ -343,31 +419,20 @@ function createMockIdp({
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>doctor7 demo sign-in</title>
-<style>
-:root{--heading:#5E60CE;--primary:#7400b8;--primary-border:#bca5eb;--ink:#1f1b2e;--muted:#4f4763;--surface:#ffffff;--tint:#f4f0fb;--line:#d8cdee}
-*{box-sizing:border-box}
-body{margin:0;background:var(--tint);color:var(--ink);font-family:Lato,Arial,Helvetica,sans-serif;font-size:1rem;line-height:1.5}
-.wrap{max-width:40rem;margin:0 auto;padding:1.5rem 1rem 2.5rem}
-h1{font-family:Montserrat,Arial,Helvetica,sans-serif;color:var(--heading);font-size:1.5rem;font-weight:700;line-height:1.25;margin:0 0 1rem}
-p{margin:0 0 1rem;max-width:70ch}
-.notice{background:var(--surface);border:1px solid var(--primary-border);border-radius:8px;padding:1rem;margin:0 0 1.25rem;box-shadow:0 1px 3px rgba(31,27,46,.08)}
-.notice p{margin:0}
-.accounts{list-style:none;margin:0 0 1.25rem;padding:0;display:grid;gap:.75rem}
-.account{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:1rem;box-shadow:0 1px 3px rgba(31,27,46,.08)}
-.account-name{font-weight:700;margin:0}
-.account-meta{margin:.25rem 0 .75rem;color:var(--muted);font-size:.9375rem;overflow-wrap:anywhere}
-.role{font-weight:700;color:var(--primary)}
-.role-none{color:var(--muted)}
-button{display:block;width:100%;min-height:44px;padding:.625rem 1rem;border:1px solid var(--primary);border-radius:6px;background:var(--primary);color:#fff;font:inherit;font-weight:700;cursor:pointer}
-button:hover{text-decoration:underline}
-button:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
-::selection{background:var(--primary-border);color:var(--ink)}
-.muted{color:var(--muted)}
-</style>
+<style>${LOGIN_CSS}</style>
 </head><body>
+<div class="page">
+<div class="band">
+<div class="brand">${LOGIN_GLYPH}<span class="logotype">Doctor<span class="logotype-seven">7</span></span></div>
+<div>
+<p class="pitch">Psychological care that your clinic runs on its own server.</p>
+<p class="band-text">This is the sign-in page of the demonstration. Choose an account to see the platform from the point of view of its role.</p>
+</div>
+</div>
 <main class="wrap">
 <h1>Sign in to the doctor7 demo</h1>
 <div class="notice" role="note">
+${NOTICE_ICON}
 <p><strong>Demonstration only.</strong> These are synthetic demonstration accounts. Their data is invented. Do not enter real personal information.</p>
 </div>
 <p>Choose an account to sign in. Each account shows its role in the system.</p>
@@ -379,6 +444,7 @@ ${accounts}
 </form>
 <p class="muted">An account marked No access is for testing a refused sign-in. The system is expected to refuse it.</p>
 </main>
+</div>
 </body></html>`;
   }
 

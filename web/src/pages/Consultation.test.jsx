@@ -63,6 +63,47 @@ describe('Consultation sheet', () => {
     expect(await screen.findByText(NO_ACCESS)).toBeInTheDocument();
     expect(calls.some((call) => call.path.startsWith('/consultations'))).toBe(false);
   });
+
+  it('puts each part of the body under its own heading', async () => {
+    sheet({ 'GET /consultations/c1': ok(consultation({ note: 'First part.', follow_up: 'Second part.' })) });
+    const note = await screen.findByRole('heading', { level: 3, name: 'Note' });
+    const followUp = screen.getByRole('heading', { level: 3, name: 'Follow up' });
+    expect(note.nextElementSibling).toHaveTextContent('First part.');
+    expect(followUp.nextElementSibling).toHaveTextContent('Second part.');
+    expect(screen.getByRole('heading', { level: 1, name: 'Consultation' })).toBeInTheDocument();
+  });
+
+  it('keeps the line breaks and shows a long note whole', async () => {
+    const long = `${'Synthetic sentence. '.repeat(100)}End.\nSecond line.`;
+    sheet({ 'GET /consultations/c1': ok(consultation({ note: long })) });
+    const text = await screen.findByText(/Synthetic sentence\./);
+    expect(text).toHaveClass('note-text');
+    expect(text.textContent).toBe(long);
+    expect(text.textContent.length).toBeGreaterThan(2000);
+  });
+
+  it('shows a body value that is not text as formatted JSON', async () => {
+    sheet({ 'GET /consultations/c1': ok(consultation({ plan: { steps: 2 } })) });
+    expect(await screen.findByText(/"steps": 2/)).toHaveClass('note-text');
+  });
+
+  it('says "Saved" to the professional and "Read only" to every other reader', async () => {
+    const first = sheet({ 'GET /consultations/c1': ok(consultation()) });
+    expect(await screen.findByText('Saved')).toHaveClass('chip-teal');
+    expect(screen.queryByText('Read only')).not.toBeInTheDocument();
+    first.unmount();
+    const second = sheet({ 'GET /consultations/c1': ok(consultation()) }, 'client');
+    expect(await screen.findByText('Read only')).toHaveClass('chip-purple');
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+    second.unmount();
+    sheet({ 'GET /consultations/c1': ok(consultation()) }, 'admin');
+    expect(await screen.findByText('Read only')).toBeInTheDocument();
+  });
+
+  it('says that opening the sheet is recorded in the audit log', async () => {
+    sheet({ 'GET /consultations/c1': ok(consultation()) });
+    expect(await screen.findByText('Opening this sheet is recorded in the audit log.')).toBeInTheDocument();
+  });
 });
 
 describe('New consultation', () => {
@@ -110,5 +151,68 @@ describe('New consultation', () => {
   it('is closed to clients', async () => {
     form({}, 'client');
     expect(await screen.findByText(NO_ACCESS)).toBeInTheDocument();
+  });
+
+  it('shows what is saved: nothing written, then not saved yet', async () => {
+    form();
+    const field = await screen.findByLabelText('Consultation note');
+    expect(screen.getByRole('status')).toHaveTextContent('Nothing written yet');
+    await userEvent.type(field, 'A note');
+    expect(screen.getByRole('status')).toHaveTextContent('Not saved yet');
+  });
+
+  it('says "Saving" while the request runs', async () => {
+    form({ 'POST /consultations': never });
+    await userEvent.type(await screen.findByLabelText('Consultation note'), 'A note');
+    await userEvent.click(screen.getByRole('button', { name: 'Save consultation' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Saving');
+  });
+
+  it('says "Not saved" when the request fails, with the reason in the alert', async () => {
+    form({ 'POST /consultations': fail(500, 'internal_error', 'x') });
+    await userEvent.type(await screen.findByLabelText('Consultation note'), 'A note');
+    await userEvent.click(screen.getByRole('button', { name: 'Save consultation' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('The server had a problem');
+    expect(screen.getByRole('status')).toHaveTextContent('Not saved');
+    expect(screen.getByRole('status')).not.toHaveTextContent('Not saved yet');
+  });
+
+  it('counts the characters, and describes the field with the count', async () => {
+    form();
+    const field = await screen.findByLabelText('Consultation note');
+    expect(screen.getByText('0 characters')).toBeInTheDocument();
+    await userEvent.type(field, 'A');
+    expect(screen.getByText('1 character')).toBeInTheDocument();
+    await userEvent.click(field);
+    await userEvent.paste('x'.repeat(1999));
+    expect(screen.getByText('2000 characters')).toBeInTheDocument();
+    expect(field).toHaveAccessibleDescription('2000 characters');
+  });
+
+  it('keeps the count and the error together in the description of the field', async () => {
+    form();
+    await userEvent.click(await screen.findByRole('button', { name: 'Save consultation' }));
+    expect(screen.getByLabelText('Consultation note')).toHaveAccessibleDescription(
+      'Write the consultation note before saving. 0 characters',
+    );
+  });
+
+  it('accepts a note of 2000 characters and sends it whole', async () => {
+    const note = 'x'.repeat(2000);
+    const { calls } = form({
+      'POST /consultations': ok(consultation(), 201),
+      'GET /consultations/c1': ok(consultation()),
+    });
+    await userEvent.click(await screen.findByLabelText('Consultation note'));
+    await userEvent.paste(note);
+    await userEvent.click(screen.getByRole('button', { name: 'Save consultation' }));
+    await screen.findByRole('heading', { name: 'Consultation sheet' });
+    expect(calls.find((call) => call.method === 'POST').body.body.note).toBe(note);
+  });
+
+  it('has the same page title and back link as before', async () => {
+    form();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Write consultation' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to appointment' })).toHaveAttribute('href', '/appointments/a1');
   });
 });

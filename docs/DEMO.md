@@ -29,6 +29,11 @@ The last two accounts test a refused sign-in. The first is verified at the
 provider but has no row in the database. The second has an unverified email at the
 provider.
 
+The provider serves its sign-in page itself, in the visual style of the web client. It has a
+left panel with the brand gradient, one card per account with initials and a role chip, and the
+notice "Demonstration only." The page loads no font, image, or script from any server, and it
+uses the fonts of the system.
+
 ## Requirements
 
 - A Debian host with Apache 2.4, with the modules `proxy`, `proxy_http`, and `ssl`.

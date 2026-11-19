@@ -106,6 +106,54 @@ the measurement in the VM.
   figure. This note gives only the Vite figures. The test output of this run did not print its
   own figure.
 
+#### K-31, frontend v2, second part
+
+K-31 rebuilt the appointment screen (video and chat), the new appointment form, the consultation
+sheet, the audit log, and the sign-in page of the mock identity provider. The figures are the gzip
+sizes that the Vite build prints for `npm run build --workspace=web`, run in the K-31 worktree. The
+"before" column is the build of the K-30 commit in the same worktree, made before the first edit of
+this task, so both columns come from one install and one machine. They are not the figures that the
+PM measured in the VM.
+
+| Output | Before | After | Change | Budget |
+| --- | --- | --- | --- | --- |
+| Initial JavaScript, gzip | 151.32 kB | 151.45 kB | +0.13 kB (+0.1%) | 200 KiB |
+| Initial JavaScript, raw | 497.03 kB | 497.30 kB | +0.27 kB | none |
+| Initial CSS, gzip | 5.75 kB | 6.78 kB | +1.03 kB (+17.9%) | 50 KiB |
+| Initial CSS, raw | 28.96 kB | 35.52 kB | +6.56 kB | none |
+| `AppointmentPage` screen file, gzip (holds `VideoPanel` and `ChatPanel`) | 3.71 kB | 4.49 kB | +0.78 kB | none |
+| `NewAppointment` screen file, gzip | 1.56 kB | 2.88 kB | +1.32 kB | none |
+| `Consultation` screen file, gzip | 1.00 kB | 1.13 kB | +0.13 kB | none |
+| `NewConsultation` screen file, gzip | 0.93 kB | 1.22 kB | +0.29 kB | none |
+| `Audit` screen file, gzip | 1.48 kB | 2.51 kB | +1.03 kB | none |
+
+- The initial JavaScript did not change in practice: the five screens are lazy files, and the two
+  changes in the initial file are the three new icons and the new skeleton shape.
+- The initial CSS grew by 17.9% over K-30, which is inside the +25% that the task allows. The
+  growth is the styles of the five screens. The old rules that these styles replace (the form
+  grid, the filter row, the badges, the details groups, and the old chat bubbles) were removed.
+- The sign-in page of the mock identity provider is not part of the web bundle. It is one HTML
+  response with an inline style, and it loads nothing else. Its size was not measured.
+- The font files are the same eight as after K-30.
+
+Both tasks together, against the build of the base commit `1397de4` that the K-30 note measured in
+the same worktree:
+
+| Output | Base | After K-31 | Change |
+| --- | --- | --- | --- |
+| Initial JavaScript, gzip | 148.29 kB | 151.45 kB | +3.16 kB (+2.1%) |
+| Initial CSS, gzip | 3.29 kB | 6.78 kB | +3.49 kB (+106%) |
+| Initial CSS, raw | 13.93 kB | 35.52 kB | +21.59 kB |
+
+- The JavaScript is inside +25%. The CSS is above +25% in relative terms, because the base CSS was
+  small. In absolute terms the whole redesign costs 3.49 kB of gzip CSS, and the result is 13% of the
+  50 KiB budget.
+- The budgets in `web/src/bundle-budget.test.js` did not change. The test passes with the build
+  above. This note gives only the Vite figures, because the budget test reads the files with zlib at
+  its default level.
+- The PM should repeat the measurement in the VM, as for K-30. The figures above were not measured
+  there.
+
 ### Load test
 
 `tests/carga/load.test.js` runs 120 requests with a concurrency of 4, against the

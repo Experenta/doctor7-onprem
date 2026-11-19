@@ -3,13 +3,30 @@ import { createMeeting } from '../api/client.js';
 import { friendlyMessage } from '../lib/errors.js';
 import { safeVideoUrl } from '../lib/appointments.js';
 import { getMeeting, MEETING_POLL_MS } from '../lib/meeting.js';
-import { VideoIcon } from './icons.jsx';
+import { AlertIcon, CheckIcon, ClockIcon, LockIcon, VideoIcon } from './icons.jsx';
 import { Skeleton } from './States.jsx';
+import { Chip } from './ui.jsx';
 
 const UNSAFE_ADDRESS = 'The video address from the server is not safe to open. Reload the page and try again.';
 const CLOSED_MESSAGE = 'This appointment is not scheduled, so a meeting cannot be started.';
 
 const EMPTY = { status: 'empty', meeting: null, message: '', retry: null };
+
+// The chip next to the heading. It only names the state that the panel is already in, so it
+// adds no state and no request.
+function roomChip(status, canStart, open) {
+  if (status === 'starting') return { tone: 'purple', icon: VideoIcon, label: 'Starting' };
+  if (status === 'ready') return { tone: 'teal', icon: CheckIcon, label: 'Room ready' };
+  if (status === 'forbidden') return { tone: 'magenta', icon: LockIcon, label: 'No access' };
+  if (status === 'error') return { tone: 'magenta', icon: AlertIcon, label: 'Problem' };
+  if (status === 'empty') {
+    if (!open) return { tone: 'neutral', icon: ClockIcon, label: 'Closed' };
+    return canStart
+      ? { tone: 'neutral', icon: ClockIcon, label: 'Not started' }
+      : { tone: 'purple', icon: ClockIcon, label: 'Waiting' };
+  }
+  return null;
+}
 
 // The meeting the API returned, checked before it is opened or embedded.
 function readyState(meeting) {
@@ -105,72 +122,120 @@ export default function VideoPanel({ appointmentId, canStart, appointmentStatus 
   const { status, meeting, message, retry } = state;
   const showStart =
     canStart && open && (status === 'empty' || status === 'starting' || (status === 'error' && retry === 'start'));
+  const chip = roomChip(status, canStart, open);
+  const live = status === 'ready' && meeting.provider === 'jitsi';
+  const stageClass = ['video-stage', live && 'is-live', status === 'loading' && 'is-loading'].filter(Boolean).join(' ');
 
   return (
-    <section className="panel" aria-labelledby="video-title">
-      <h2 id="video-title">Video consultation</h2>
-
-      {status === 'loading' && <Skeleton label="Loading the video meeting" />}
-
-      {status === 'forbidden' && (
-        <p role="alert">Your account cannot open the video meeting of this appointment. Go back and pick another appointment.</p>
-      )}
-
-      {status === 'empty' && !open && <p className="muted">{CLOSED_MESSAGE}</p>}
-
-      {status === 'empty' && open && !canStart && (
-        <div role="status" aria-live="polite">
-          <p>Your professional has not started the meeting yet.</p>
-          <p className="muted">This page checks again every 15 seconds. Keep it open.</p>
-        </div>
-      )}
-
-      {showStart && (
-        <>
-          <p>Start the meeting when you are ready. Your client opens the same appointment to join it.</p>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={start}
-            disabled={status === 'starting'}
-            aria-busy={status === 'starting'}
-          >
-            <VideoIcon />
-            {status === 'starting' ? 'Starting video meeting' : 'Start video meeting'}
-          </button>
-        </>
-      )}
-
-      {status === 'error' && (
-        <div className="alert" role="alert">
-          <p>{message}</p>
-          {retry === 'load' && (
-            <button type="button" className="btn btn-secondary" onClick={() => setAttempt((n) => n + 1)}>
-              Try again
-            </button>
+    <section className="card video-card" aria-labelledby="video-title">
+      <div className="card-head">
+        <h2 id="video-title">Video consultation</h2>
+        <div className="card-head-chips">
+          {status === 'ready' && (
+            <Chip tone="dark" icon={VideoIcon}>
+              {meeting.provider === 'jitsi' ? 'Jitsi' : 'Google Meet'}
+            </Chip>
+          )}
+          {chip && (
+            <Chip tone={chip.tone} icon={chip.icon}>
+              {chip.label}
+            </Chip>
           )}
         </div>
-      )}
+      </div>
 
-      {status === 'ready' && meeting.provider === 'meet' && (
-        <>
-          <p>The meeting is ready. Google Meet opens in a new tab.</p>
-          <a className="btn btn-primary" href={meeting.url} target="_blank" rel="noopener noreferrer">
-            <VideoIcon />
-            Open Google Meet in a new tab
-          </a>
-        </>
-      )}
+      <div className={stageClass}>
+        {status === 'loading' && <Skeleton label="Loading the video meeting" />}
 
-      {status === 'ready' && meeting.provider === 'jitsi' && (
-        <iframe
-          className="video-frame"
-          title="Video consultation"
-          src={meeting.url}
-          allow="camera; microphone; fullscreen; display-capture"
-          referrerPolicy="no-referrer"
-        />
-      )}
+        {live && (
+          <iframe
+            className="video-frame"
+            title="Video consultation"
+            src={meeting.url}
+            allow="camera; microphone; fullscreen; display-capture"
+            referrerPolicy="no-referrer"
+          />
+        )}
+
+        {status !== 'loading' && !live && (
+          <div className="stage-body">
+            {status === 'forbidden' && (
+              <div className="stage-block">
+                <span className="stage-icon">
+                  <LockIcon />
+                </span>
+                <p className="stage-title" role="alert">
+                  Your account cannot open the video meeting of this appointment. Go back and pick another appointment.
+                </p>
+              </div>
+            )}
+
+            {status === 'empty' && !open && (
+              <div className="stage-block">
+                <span className="stage-icon">
+                  <ClockIcon />
+                </span>
+                <p className="stage-text">{CLOSED_MESSAGE}</p>
+              </div>
+            )}
+
+            {status === 'empty' && open && !canStart && (
+              <div className="stage-block" role="status" aria-live="polite">
+                <span className="stage-icon">
+                  <span className="pulse-dot" />
+                </span>
+                <p className="stage-title">Your professional has not started the meeting yet.</p>
+                <p className="stage-text">This page checks again every 15 seconds. Keep it open.</p>
+              </div>
+            )}
+
+            {showStart && (
+              <div className="stage-block">
+                <span className="stage-icon">
+                  <VideoIcon />
+                </span>
+                <p className="stage-title">Start the meeting when you are ready.</p>
+                <p className="stage-text">Your client opens the same appointment to join it.</p>
+                <button
+                  type="button"
+                  className="btn btn-on-band"
+                  onClick={start}
+                  disabled={status === 'starting'}
+                  aria-busy={status === 'starting'}
+                >
+                  <VideoIcon />
+                  {status === 'starting' ? 'Starting video meeting' : 'Start video meeting'}
+                </button>
+              </div>
+            )}
+
+            {status === 'error' && (
+              <div className="alert stage-alert" role="alert">
+                <AlertIcon />
+                <p>{message}</p>
+                {retry === 'load' && (
+                  <button type="button" className="btn btn-secondary" onClick={() => setAttempt((n) => n + 1)}>
+                    Try again
+                  </button>
+                )}
+              </div>
+            )}
+
+            {status === 'ready' && meeting.provider === 'meet' && (
+              <div className="stage-block">
+                <span className="stage-icon">
+                  <VideoIcon />
+                </span>
+                <p className="stage-title">The meeting is ready. Google Meet opens in a new tab.</p>
+                <a className="btn btn-on-band" href={meeting.url} target="_blank" rel="noopener noreferrer">
+                  <VideoIcon />
+                  Open Google Meet in a new tab
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

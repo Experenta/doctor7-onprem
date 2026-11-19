@@ -8,6 +8,7 @@ const SKELETON_BLOCKS = {
   lines: ['line', 'line', 'line'],
   list: ['row', 'row', 'row', 'row', 'row'],
   home: ['hero', 'tile', 'tile', 'tile', 'row', 'row'],
+  appointment: ['row', 'video'],
 };
 
 // A loading placeholder with a soft shimmer. One status region and one label, so a screen

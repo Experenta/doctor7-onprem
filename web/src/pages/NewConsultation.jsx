@@ -1,8 +1,18 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { createConsultation } from '../api/client.js';
-import { AlertIcon } from '../components/icons.jsx';
+import { AlertIcon, CheckIcon, ClockIcon } from '../components/icons.jsx';
+import { Button, Chip, PageHeader } from '../components/ui.jsx';
 import { friendlyMessage } from '../lib/errors.js';
+
+// What the save indicator says. It is derived from the screen state, so it adds no state of
+// its own. There is no draft endpoint, so nothing is saved until the button is pressed.
+function indicatorFor({ saving, submitError, note }) {
+  if (saving) return { tone: 'purple', icon: ClockIcon, label: 'Saving' };
+  if (submitError) return { tone: 'magenta', icon: AlertIcon, label: 'Not saved' };
+  if (note.trim()) return { tone: 'neutral', icon: null, label: 'Not saved yet' };
+  return { tone: 'neutral', icon: null, label: 'Nothing written yet' };
+}
 
 export default function NewConsultation() {
   const { id } = useParams();
@@ -30,16 +40,25 @@ export default function NewConsultation() {
     }
   }
 
+  const indicator = indicatorFor({ saving, submitError, note });
+
   return (
     <>
-      <div className="page-head">
-        <h1>Write consultation</h1>
-        <Link className="btn btn-secondary" to={`/appointments/${id}`}>
+      <PageHeader title="Write consultation">
+        <Button variant="secondary" to={`/appointments/${id}`}>
           Back to appointment
-        </Link>
-      </div>
-      <section className="panel" aria-label="Consultation form">
-        <form className="form" onSubmit={submit} noValidate>
+        </Button>
+      </PageHeader>
+      <form className="editor" onSubmit={submit} noValidate aria-label="Consultation form">
+        <div className="panel">
+          <div className="card-head">
+            <h2>Note</h2>
+            <span role="status">
+              <Chip tone={indicator.tone} icon={indicator.icon}>
+                {indicator.label}
+              </Chip>
+            </span>
+          </div>
           <div className="field">
             <label htmlFor="note">Consultation note</label>
             <textarea
@@ -48,28 +67,36 @@ export default function NewConsultation() {
               value={note}
               onChange={(event) => setNote(event.target.value)}
               aria-invalid={fieldError ? 'true' : undefined}
-              aria-describedby={fieldError ? 'note-error' : undefined}
+              aria-describedby={fieldError ? 'note-error note-count' : 'note-count'}
             />
-            {fieldError && (
-              <p className="field-error" id="note-error">
-                <AlertIcon />
-                {fieldError}
-              </p>
-            )}
-          </div>
-          {submitError && (
-            <div className="alert" role="alert">
-              <AlertIcon />
-              <p>{submitError}</p>
+            <div className="editor-foot">
+              {fieldError ? (
+                <p className="field-error" id="note-error">
+                  <AlertIcon />
+                  {fieldError}
+                </p>
+              ) : (
+                <span />
+              )}
+              <span className="hint char-count" id="note-count">
+                {note.length} {note.length === 1 ? 'character' : 'characters'}
+              </span>
             </div>
-          )}
-          <div className="actions">
-            <button type="submit" className="btn btn-primary" disabled={saving} aria-busy={saving}>
-              {saving ? 'Saving consultation' : 'Save consultation'}
-            </button>
           </div>
-        </form>
-      </section>
+        </div>
+        {submitError && (
+          <div className="alert" role="alert">
+            <AlertIcon />
+            <p>{submitError}</p>
+          </div>
+        )}
+        <div className="actions">
+          <button type="submit" className="btn btn-primary" disabled={saving} aria-busy={saving}>
+            <CheckIcon />
+            {saving ? 'Saving consultation' : 'Save consultation'}
+          </button>
+        </div>
+      </form>
     </>
   );
 }

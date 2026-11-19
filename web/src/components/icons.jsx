@@ -43,3 +43,6 @@ export const ArrowLeftIcon = make('M19 12H5M11 6l-6 6 6 6');
 export const CheckIcon = make('M5 12.5l4.5 4.5L19 7');
 export const PulseIcon = make('M3 12h4l3-7 4 14 3-7h4');
 export const BanIcon = make('M12 3a9 9 0 100 18 9 9 0 000-18zM5.6 5.6l12.8 12.8');
+export const SearchIcon = make('M11 4a7 7 0 100 14 7 7 0 000-14zM16 16l5 5');
+export const CloseIcon = make('M6 6l12 12M18 6L6 18');
+export const RefreshIcon = make('M20 11a8 8 0 00-14-4M4 4v4h4M4 13a8 8 0 0014 4M20 20v-4h-4');

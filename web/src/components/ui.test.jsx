@@ -144,7 +144,7 @@ describe('page header', () => {
 
 describe('data states', () => {
   it('shows one status region and one label, for every skeleton shape', () => {
-    for (const variant of ['lines', 'list', 'home']) {
+    for (const variant of ['lines', 'list', 'home', 'appointment']) {
       const { unmount } = view(<Skeleton variant={variant} label="Loading rows" />);
       expect(screen.getAllByRole('status')).toHaveLength(1);
       expect(screen.getAllByText('Loading rows')).toHaveLength(1);

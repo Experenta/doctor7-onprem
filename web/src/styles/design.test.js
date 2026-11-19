@@ -182,6 +182,13 @@ describe('text contrast (4.5:1)', () => {
     ['on-gradient', 'purple-700'],
     ['on-gradient', 'magenta-600'],
     ['selection-text', 'selection-bg'],
+    // K-31: the chat bubble of the user, the video stage, and the selected audit row.
+    ['on-dark-muted', 'purple-700'],
+    ['ink', 'purple-100'],
+    ['ink-muted', 'purple-100'],
+    ['primary', 'purple-100'],
+    ['primary', 'line'],
+    ['turquoise-800', 'surface-muted'],
   ];
   it.each(pairs)('%s on %s', (fg, bg) => {
     expect(contrast(c(fg), c(bg))).toBeGreaterThanOrEqual(4.5);
@@ -204,6 +211,7 @@ describe('turquoise rules', () => {
     expect(asText.flatMap((rule) => rule.selectors).sort()).toEqual([
       '.logotype-seven',
       ".side-link[aria-current='page'] .icon",
+      '.stage-icon',
     ]);
   });
 
@@ -243,6 +251,11 @@ describe('graphics contrast (3:1)', () => {
     ['on-dark-muted', 'purple-950'],
     ['turquoise-500', 'purple-950'],
     ['magenta-600', 'magenta-100'],
+    // K-31: the stage icon and the pulse on the video stage, and the connection dots.
+    ['turquoise-500', 'purple-900'],
+    ['magenta-600', 'surface'],
+    ['purple-500', 'bg'],
+    ['turquoise-700', 'bg'],
   ];
   it.each(pairs)('%s on %s', (fg, bg) => {
     expect(contrast(c(fg), c(bg))).toBeGreaterThanOrEqual(3);
@@ -349,6 +362,8 @@ describe('css rules', () => {
       '.input',
       '.brand',
       '.appt-time',
+      '.row-open',
+      '.icon-btn',
     ];
     for (const selector of selectors) expect(hasTouchTarget(selector), selector).toBe(true);
   });
@@ -364,6 +379,78 @@ describe('css rules', () => {
   it('puts the active indicator on the navigation, in turquoise', () => {
     const indicator = rulesFor(".side-link[aria-current='page']::before")[0];
     expect(indicator.body).toMatch(/background:\s*var\(--color-turquoise-500\)/);
+  });
+});
+
+describe('screens of K-31', () => {
+  it('stacks the video above the chat, and makes the chat a rail from 1100px', () => {
+    const [base, ...rest] = rulesFor('.appt-workspace');
+    expect(base.body).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\);/);
+    expect(rest).toHaveLength(1);
+    expect(rest[0].body).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\) 23rem;/);
+    expect(css).toMatch(/@media \(min-width: 1100px\)\s*\{\s*\.appt-workspace/);
+  });
+
+  it('draws the video stage at 16:9 and fills it with the frame', () => {
+    expect(rulesFor('.video-stage')[0].body).toMatch(/aspect-ratio:\s*16 \/ 9/);
+    const frame = rulesFor('.video-frame')[0].body;
+    expect(frame).toMatch(/position:\s*absolute/);
+    expect(frame).toMatch(/inset:\s*0/);
+    // A box with a preferred ratio can only grow with its content when it does not clip.
+    expect(rulesFor('.video-stage')[0].body).not.toMatch(/overflow:\s*hidden/);
+  });
+
+  it('keeps the text on the video stage white or tinted, and the turquoise to icons and dots', () => {
+    expect(rulesFor('.video-stage')[0].body).toMatch(/background:\s*var\(--color-purple-950\)/);
+    expect(rulesFor('.stage-title')[0].body).toMatch(/color:\s*var\(--color-white\)/);
+    expect(rulesFor('.stage-text')[0].body).toMatch(/color:\s*var\(--color-on-dark-muted\)/);
+    expect(rulesFor('.stage-icon')[0].body).toMatch(/background:\s*var\(--color-purple-900\)/);
+    expect(rulesFor('.video-stage .pulse-dot')[0].body).toMatch(/background:\s*var\(--color-turquoise-500\)/);
+  });
+
+  it('puts the white controls on the stage and gives them the focus ring of dark surfaces', () => {
+    expect(rulesFor('.video-stage :focus-visible')[0].body).toMatch(/outline-color:\s*var\(--color-focus-on-dark\)/);
+    expect(rulesFor('.video-stage .alert :focus-visible')[0].body).toMatch(/outline-color:\s*var\(--color-focus\)/);
+  });
+
+  it('shows the bubbles of the user on purple 700 with white text and tinted time', () => {
+    const own = rulesFor('.chat-item-own .chat-bubble')[0].body;
+    expect(own).toMatch(/background:\s*var\(--color-purple-700\)/);
+    expect(own).toMatch(/color:\s*var\(--color-white\)/);
+    expect(rulesFor('.chat-item-own .chat-meta')[0].body).toMatch(/color:\s*var\(--color-on-dark-muted\)/);
+  });
+
+  it('marks the connection with a dot, and pulses only while connecting', () => {
+    expect(rulesFor('.conn-connecting')[0].body).toMatch(/animation:\s*pulse\b/);
+    for (const selector of ['.conn-open', '.conn-closed', '.conn-dot']) {
+      expect(rulesFor(selector)[0].body, selector).not.toMatch(/animation/);
+    }
+  });
+
+  it('stacks the new appointment form, and puts the summary beside it from 1100px', () => {
+    expect(rulesFor('.sched')[0].body).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\);/);
+    expect(rulesFor('.sched')[1].body).toMatch(/grid-template-areas/);
+    expect(rulesFor('.sched-summary')[0].body).toMatch(/position:\s*sticky/);
+    expect(rulesFor('.field-pair')[0].body).toMatch(/minmax\(0, 1fr\);/);
+    expect(rulesFor('.field-pair')[1].body).toMatch(/repeat\(2, minmax\(0, 1fr\)\)/);
+  });
+
+  it('keeps the header of the audit table in view and the detail beside it from 1100px', () => {
+    const header = rulesFor('.table-scroll thead th')[0].body;
+    expect(header).toMatch(/position:\s*sticky/);
+    expect(header).toMatch(/top:\s*0/);
+    expect(rulesFor('.table-scroll .table')[0].body).toMatch(/border-collapse:\s*separate/);
+    expect(rulesFor('.audit-detail')[0].body).toMatch(/position:\s*sticky/);
+    expect(rulesFor('.audit-layout.has-detail')[0].body).toMatch(/22rem/);
+  });
+
+  it('does not use the brand gradient or a colored border on the new cards', () => {
+    for (const selector of ['.appt-head', '.video-card', '.chat-card', '.sched-summary', '.audit-detail', '.sheet']) {
+      for (const rule of rulesFor(selector)) {
+        expect(rule.body, selector).not.toMatch(/gradient/);
+        expect(rule.body, selector).not.toMatch(/border-(left|right)/);
+      }
+    }
   });
 });
 
