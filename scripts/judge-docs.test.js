@@ -183,9 +183,9 @@ test('the demo script adds up to 180 seconds or less, and its own numbers agree'
 
 // ---- The task count and the specification folders of the Kiro documents ----
 
-const TASK_COUNT = 34;
+const TASK_COUNT = 35;
 const TASK_SENTENCE =
-  '34 tasks were given to Kiro agents: K-01 to K-34 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19.';
+  '35 tasks were given to Kiro agents: K-01 to K-35 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19.';
 const SPEC_SENTENCE =
   'From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none.';
 // Phrases that the documents must no longer contain.
@@ -225,6 +225,42 @@ test('the Kiro documents list the specification folders that exist in .kiro/spec
     assert.ok(match, `${file} must list the specification folders`);
     const listed = match[1].match(/k-\d{2}/g) || [];
     assert.deepEqual([...listed].sort(), folders, `${file} differs from the folders in .kiro/specs/`);
+  }
+});
+
+// ---- The restricted implementer agent ----
+
+const AGENT_FILE = '.kiro/agents/implementer.json';
+const AGENT_TOOLS = ['fs_read', 'fs_write', 'execute_bash'];
+// Words that no allowed command may contain. The shell control characters are checked below.
+const AGENT_FORBIDDEN_WORDS = ['push', 'install', 'curl', 'ssh', 'aws'];
+const AGENT_FORBIDDEN_CHARS = [';', '&', '|'];
+
+// The allowed command patterns contain bracket classes such as [^;&|<>`$]. Those classes
+// list the forbidden characters on purpose, so they are removed before the check.
+function commandTextWithoutClasses(pattern) {
+  return pattern.replace(/\[[^\]]*\]/g, '');
+}
+
+test('the implementer agent file is valid JSON with the agreed tools and command limits', () => {
+  const agent = JSON.parse(read(AGENT_FILE));
+  assert.deepEqual(agent.tools, AGENT_TOOLS, 'the tool list must be exactly fs_read, fs_write, execute_bash');
+  const commands = agent.toolsSettings.execute_bash.allowedCommands;
+  assert.ok(Array.isArray(commands) && commands.length > 0, 'the agent lists its allowed commands');
+  for (const pattern of commands) {
+    const text = commandTextWithoutClasses(pattern).toLowerCase();
+    for (const char of AGENT_FORBIDDEN_CHARS) {
+      assert.ok(!text.includes(char), `allowed command "${pattern}" contains "${char}"`);
+    }
+    for (const word of AGENT_FORBIDDEN_WORDS) {
+      assert.ok(!text.includes(word), `allowed command "${pattern}" contains "${word}"`);
+    }
+  }
+});
+
+test('the Kiro documents name the implementer agent file', () => {
+  for (const { file } of KIRO_DOCS) {
+    assert.ok(read(file).includes(AGENT_FILE), `${file} must name ${AGENT_FILE}`);
   }
 });
 
