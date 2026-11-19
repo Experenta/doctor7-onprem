@@ -1,0 +1,9 @@
+# Example forbidden-word list. The real list is never stored in the repository.
+#
+# Point the scanner at your own list with the FORBIDDEN_WORDS_FILE environment
+# variable, or copy this file to scripts/forbidden-words.local.txt (git ignores it).
+#
+# Format: one term per line. Matching ignores case. Lines starting with # are comments.
+# The terms below are invented.
+client-name-example
+private-library-example

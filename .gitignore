@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output and caches
+dist/
+build/
+coverage/
+.cache/
+*.tsbuildinfo
+
+# Local environment and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# Forbidden-word list kept outside the repository (see README.md)
+scripts/forbidden-words.local.txt
+
