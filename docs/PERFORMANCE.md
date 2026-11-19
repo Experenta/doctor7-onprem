@@ -50,20 +50,27 @@ not change with the number of rows, so no N+1 query was found in these routes.
 
 ### Bundle
 
-| Output | Size | Budget |
-| --- | --- | --- |
-| Initial JavaScript, gzip (Vite build of this change) | 148.30 kB | 200 KiB |
-| Initial CSS, gzip (Vite build of this change) | 3.29 kB | 50 KiB |
-| Initial JavaScript, gzip, before lazy loading | 153.63 kB | 200 KiB |
+The PM measured these figures in the VM with `npm run build --workspace=web`. The
+first version of this note gave 148.30 kB and 153.63 kB. Those figures did not match
+the PM's measurement, so they are replaced.
 
-Vite prints its sizes in kB and computes gzip with its own settings. The budget test
-measures the same initial files with zlib, at the default level, and in KiB. The
-budget test passes.
+| Output | Size | How it was measured | Budget |
+| --- | --- | --- | --- |
+| Initial JavaScript, gzip | 86.40 kB | Vite build output, from `npm run build --workspace=web` | 200 KiB |
+| Initial JavaScript, gzip | 85,232 bytes | gzip at level 9, over the same initial file | 200 KiB |
+| Initial JavaScript, gzip, before lazy loading | 90.31 kB | PM measurement of the build before lazy loading | 200 KiB |
+| Initial CSS, gzip | 3.29 kB | Vite build output, from `npm run build --workspace=web` | 50 KiB |
+
+The first two rows describe the same initial file, measured two ways. Vite reports
+86.40 kB. The gzip run at level 9 gives 85,232 bytes. The budget test uses zlib at the
+default level and in KiB. This note does not repeat that setting, so the budget test
+result comes from the test itself.
 
 Lazy loading moved each screen into its own file, with a gzip size between 0.9 kB and
-3.1 kB. The initial script went down by about 5 kB. Most of the initial script is
-React and React DOM, so a larger reduction needs a decision about the libraries.
-That decision is not part of this task.
+3.1 kB. The initial script went down by about 4 kB compressed: 90.31 kB before and
+86.40 kB after, a difference of 3.91 kB. Most of the initial script is React and React
+DOM, so a larger reduction needs a decision about the libraries. That decision is not
+part of this task.
 
 ### Load test
 
@@ -98,11 +105,27 @@ you run `up` again.
 | `ix_audit_log_center_occurred` | `audit_log` | `center_id`, `occurred_at` | `GET /audit`, for every filter |
 | `ix_chat_messages_sent` | `chat_messages` | `sent_at` | Chat purge, `DELETE ... WHERE sent_at < ?` |
 
-### Queries and the expected plan
+### Measured plans
 
-The PM runs these statements in the VM, with `EXPLAIN` in front. The values are
-synthetic. The plans below are what the index design predicts. They are not
-measured results.
+The PM measured these plans in the VM, on MariaDB 11.8, with the synthetic seed
+loaded. The index column names the index of migration 0004 that the plan used. The
+type is the access type that `EXPLAIN` reports.
+
+| Query | Index used | Type |
+| --- | --- | --- |
+| Appointments of a professional (query 1 below) | `ix_appointments_center_professional_start` | `ref` |
+| Appointments of a client (query 2 below) | `ix_appointments_center_client_start` | `ref` |
+| Audit list of a center (query 3 below) | `ix_audit_log_center_occurred` | `ref` |
+| Chat purge, `WHERE sent_at < ?` (query 4 below) | `ix_chat_messages_sent` | `range` |
+
+Query 5 below, the chat history on connection, is not in the measured list. The
+sections that follow show the plans the index design predicted. They are kept to
+compare with the measured ones, and they are not results.
+
+### Queries and the predicted plan
+
+Run these statements with `EXPLAIN` in front. The values are synthetic. Each query
+lists the plan that the index design predicts. The measured plans are above.
 
 1. Appointments of a professional, in start order.
 

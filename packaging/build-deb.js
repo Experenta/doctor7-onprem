@@ -10,9 +10,20 @@
 //   demo          Demo package with the mock identity provider. Demo only, never
 //                 production. Build it on its own: node packaging/build-deb.js demo.
 //   --out DIR     Output directory. Default: packaging/build (git ignores it).
-//   --version V   Package version. Default: version of the root package.json plus "-1".
+//   --version V   Package version. See "Version" below.
 //   --web-dist D  Front-end build output. Default: web/dist (run `npm run build --workspace=web`).
 //   --no-deps     Skip `npm ci`. Use it only to check the package layout.
+//
+// Version. The first source that is set wins:
+//   1. --version V
+//   2. the environment variable D7_VERSION (an empty value counts as unset)
+//   3. git: <version of the root package.json>+git<commit count>.<short hash>-1
+//   4. no git: <version of the root package.json>-1, with a warning
+// Every version must pass the Debian rule of VERSION_PATTERN. The commit count
+// grows on one branch, so apt sees a later build as a newer version.
+//
+// The doctor7-api package also holds /usr/lib/doctor7/VERSION, with the version and
+// the build date. The API reads it for GET /version.
 //
 // With dpkg-deb on the machine, the builder writes <out>/<name>_<version>_all.deb.
 // Without it, the builder validates everything and leaves the assembled tree in
@@ -224,6 +235,79 @@ function hasCommand(command) {
   return !result.error && result.status === 0;
 }
 
+// True when two paths name the same folder. A symlink is followed, and Windows
+// ignores case.
+function samePath(a, b) {
+  const normal = (p) => {
+    let resolved = path.resolve(p);
+    try {
+      resolved = fs.realpathSync(resolved);
+    } catch {
+      // A path that does not exist is compared as written.
+    }
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  return normal(a) === normal(b);
+}
+
+// Commit count and short hash of HEAD, when root is the top of a git repository.
+// Returns null when git is missing, when root is inside another repository, or
+// when HEAD has no commit.
+function gitVersionParts(root) {
+  const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+  const top = git(['rev-parse', '--show-toplevel']);
+  if (top.error || top.status !== 0 || !samePath(top.stdout.trim(), root)) return null;
+  const count = git(['rev-list', '--count', 'HEAD']);
+  const hash = git(['rev-parse', '--short', 'HEAD']);
+  if (count.error || hash.error || count.status !== 0 || hash.status !== 0) return null;
+  const commits = count.stdout.trim();
+  const short = hash.stdout.trim();
+  if (!/^[1-9][0-9]*$/.test(commits) || !/^[0-9a-f]{4,40}$/.test(short)) return null;
+  return { count: commits, hash: short };
+}
+
+// Stops with a message when the value breaks the Debian rule. Returns the value.
+function checkVersion(value, source) {
+  if (!VERSION_PATTERN.test(value)) {
+    throw new BuildError(
+      `"${value}" from ${source} is not a valid Debian version. It must start with a digit and hold only letters, digits, and . + ~ -. Fix ${source} and build again.`,
+    );
+  }
+  return value;
+}
+
+// The version of the root package.json. Stops when the file or the field is missing.
+function manifestVersion(root) {
+  const manifest = path.join(root, 'package.json');
+  if (!exists(manifest)) throw new BuildError(`Missing ${manifest}. Pass --version or set D7_VERSION.`);
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+  } catch (err) {
+    throw new BuildError(`${manifest} is not valid JSON: ${err.message}`);
+  }
+  if (typeof parsed.version !== 'string' || parsed.version === '') {
+    throw new BuildError(`${manifest} has no version field. Pass --version or set D7_VERSION.`);
+  }
+  return parsed.version;
+}
+
+// The package version, from the first source that is set. See the top of this file.
+function resolveVersion({ cliVersion, root, env = process.env, git = gitVersionParts, log = () => {} }) {
+  if (cliVersion !== undefined) return checkVersion(cliVersion, '--version');
+  if (env.D7_VERSION) return checkVersion(env.D7_VERSION, 'D7_VERSION');
+  const base = checkVersion(manifestVersion(root), 'the root package.json');
+  const parts = git(root);
+  if (parts) return `${base}+git${parts.count}.${parts.hash}-1`;
+  log('build-deb: warning: git is not available for this tree, so the version has no commit count. Set D7_VERSION or pass --version to publish a version that apt sees as newer.');
+  return `${base}-1`;
+}
+
+// The two lines of /usr/lib/doctor7/VERSION. The API reads them for GET /version.
+function versionFileText(version, buildDate) {
+  return `version=${version}\nbuild-date=${buildDate}\n`;
+}
+
 // Production node_modules for the API, installed in a staged copy of the
 // workspace root so that `npm ci` uses the committed lockfile. The staged
 // root is /usr/lib/doctor7, so Node finds node_modules above the api directory.
@@ -251,13 +335,15 @@ function installProductionDeps({ root, out, libDir }) {
   fs.rmSync(stage, { recursive: true, force: true });
 }
 
-function addApiPayload({ root, tree, out, installDeps }) {
+function addApiPayload({ root, tree, out, installDeps, version, buildDate }) {
   const libDir = path.join(tree, 'usr', 'lib', 'doctor7');
   const appDir = path.join(libDir, 'api');
   const isTestFile = (source, entry) => entry.isFile() && source.endsWith('.test.js');
   copyTree(path.join(root, 'api', 'src'), path.join(appDir, 'src'), { filter: (s, e) => !isTestFile(s, e) });
   copyTree(path.join(root, 'api', 'migrations'), path.join(appDir, 'migrations'));
   fs.copyFileSync(path.join(root, 'api', 'package.json'), path.join(appDir, 'package.json'));
+  // GET /version reads this file. It is the only place that holds the package version.
+  fs.writeFileSync(path.join(libDir, 'VERSION'), versionFileText(version, buildDate));
   if (installDeps) installProductionDeps({ root, out, libDir });
 }
 
@@ -284,7 +370,7 @@ function copyText(from, to) {
   fs.writeFileSync(to, fs.readFileSync(from, 'utf8').replace(/\r\n/g, '\n'));
 }
 
-function buildOne(pkg, { root, out, version, webDist, installDeps, log }) {
+function buildOne(pkg, { root, out, version, buildDate, webDist, installDeps, log }) {
   const name = NAMES[pkg];
   const tree = path.join(out, `${name}_${version}`);
   fs.rmSync(tree, { recursive: true, force: true });
@@ -293,7 +379,7 @@ function buildOne(pkg, { root, out, version, webDist, installDeps, log }) {
     filter: (source, entry) => !(entry.isFile() && isNeverPackaged(entry.name)),
   });
 
-  if (pkg === 'api') addApiPayload({ root, tree, out, installDeps });
+  if (pkg === 'api') addApiPayload({ root, tree, out, installDeps, version, buildDate });
   else if (pkg === 'demo') addDemoPayload({ root, tree });
   else addWebPayload({ tree, webDist });
 
@@ -326,15 +412,16 @@ function build(options = {}) {
   const webDist = path.resolve(options.webDist || path.join(root, 'web', 'dist'));
   const log = options.log || ((line) => process.stdout.write(`${line}\n`));
 
-  let version = options.version;
-  if (!version) {
-    const manifest = path.join(root, 'package.json');
-    if (!exists(manifest)) throw new BuildError(`Missing ${manifest}. Pass --version.`);
-    version = `${JSON.parse(fs.readFileSync(manifest, 'utf8')).version}-1`;
-  }
-  if (!VERSION_PATTERN.test(version)) {
-    throw new BuildError(`"${version}" is not a valid Debian version. It must start with a digit.`);
-  }
+  // options.version is the --version value. The other sources are read here.
+  const version = resolveVersion({
+    cliVersion: options.version,
+    root,
+    env: options.env || process.env,
+    git: options.git,
+    log,
+  });
+  // One build date for the whole run, written into the API version file.
+  const buildDate = new Date().toISOString();
 
   const problems = checkInputs({ root, packages, webDist, installDeps });
   if (problems.length > 0) {
@@ -342,10 +429,19 @@ function build(options = {}) {
   }
 
   fs.mkdirSync(out, { recursive: true });
-  return packages.map((pkg) => buildOne(pkg, { root, out, version, webDist, installDeps, log }));
+  return packages.map((pkg) => buildOne(pkg, { root, out, version, buildDate, webDist, installDeps, log }));
 }
 
-module.exports = { BuildError, build, checkInputs, parseArgs, parseControl };
+module.exports = {
+  BuildError,
+  build,
+  checkInputs,
+  parseArgs,
+  parseControl,
+  resolveVersion,
+  versionFileText,
+  gitVersionParts,
+};
 
 if (require.main === module) {
   try {

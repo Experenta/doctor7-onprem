@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { BuildError, build, checkInputs, parseArgs, parseControl } = require('./build-deb');
+const { BuildError, build, checkInputs, parseArgs, parseControl, resolveVersion, gitVersionParts, versionFileText } = require('./build-deb');
 
 const ROOT = path.join(__dirname, '..');
 const PKG = __dirname;
@@ -465,6 +465,7 @@ test('the builder assembles the demo package tree with the provider and its temp
     ['usr', 'share', 'doctor7', 'idp-demo.conf.example'],
     ['usr', 'lib', 'doctor7', 'mock-idp', 'server.js'],
     ['usr', 'lib', 'doctor7', 'mock-idp', 'rate-limit.js'],
+    ['etc', 'doctor7', 'vhost-demo.conf'],
   ]) {
     assert.ok(fs.existsSync(tree(...parts)), parts.join('/'));
   }
@@ -542,4 +543,203 @@ test('the builder refuses a file outside DEBIAN, usr and etc before it builds an
       && !/x\.test\.js/.test(err.message),
   );
   assert.equal(fs.existsSync(out), false, 'nothing is written when the check fails');
+});
+
+
+// ---- Package version (K-21) -------------------------------------------------
+
+// A stand-in for the git lookup. It counts its calls and returns the given parts.
+function fakeGit(parts) {
+  const git = () => {
+    git.calls += 1;
+    return parts;
+  };
+  git.calls = 0;
+  return git;
+}
+
+// A root folder with a package.json of the given version.
+function manifestRoot(t, version) {
+  const dir = makeTemp(t);
+  fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({ name: 'fixture', version })}\n`);
+  return dir;
+}
+
+const LOG_NONE = () => {};
+
+// dpkg's comparison (verrevcmp) for versions without an epoch. The tests use it to
+// check that derived versions sort the way apt sorts them.
+const isDigit = (c) => c !== undefined && c >= '0' && c <= '9';
+const isAlpha = (c) => c !== undefined && /^[A-Za-z]$/.test(c);
+function charOrder(c) {
+  if (c === undefined || isDigit(c)) return 0;
+  if (isAlpha(c)) return c.charCodeAt(0);
+  if (c === '~') return -1;
+  return c.charCodeAt(0) + 256;
+}
+function compareUpstream(a, b) {
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    let firstDiff = 0;
+    while ((i < a.length && !isDigit(a[i])) || (j < b.length && !isDigit(b[j]))) {
+      const ac = charOrder(a[i]);
+      const bc = charOrder(b[j]);
+      if (ac !== bc) return ac - bc;
+      i += 1;
+      j += 1;
+    }
+    while (a[i] === '0') i += 1;
+    while (b[j] === '0') j += 1;
+    while (isDigit(a[i]) && isDigit(b[j])) {
+      if (firstDiff === 0) firstDiff = a.charCodeAt(i) - b.charCodeAt(j);
+      i += 1;
+      j += 1;
+    }
+    if (isDigit(a[i])) return 1;
+    if (isDigit(b[j])) return -1;
+    if (firstDiff !== 0) return firstDiff;
+  }
+  return 0;
+}
+function compareVersions(a, b) {
+  const split = (v) => {
+    const cut = v.lastIndexOf('-');
+    return [v.slice(0, cut), v.slice(cut + 1)];
+  };
+  const [upstreamA, revisionA] = split(a);
+  const [upstreamB, revisionB] = split(b);
+  return compareUpstream(upstreamA, upstreamB) || compareUpstream(revisionA, revisionB);
+}
+
+test('the version comes from --version first, then D7_VERSION, then git, then package.json', (t) => {
+  const root = manifestRoot(t, '0.0.0');
+  const git = fakeGit({ count: '42', hash: 'abc1234' });
+  const logs = [];
+  const log = (line) => logs.push(line);
+
+  // (a) --version wins, and git is not asked.
+  assert.equal(resolveVersion({ cliVersion: '9.9.9-1', root, env: { D7_VERSION: '8.8.8-1' }, git, log }), '9.9.9-1');
+  assert.equal(git.calls, 0);
+
+  // (b) D7_VERSION wins over git.
+  assert.equal(resolveVersion({ root, env: { D7_VERSION: '8.8.8-1' }, git, log }), '8.8.8-1');
+  assert.equal(git.calls, 0);
+
+  // (c) git gives the derived version, with the commit count and the short hash.
+  assert.equal(resolveVersion({ root, env: {}, git, log }), '0.0.0+git42.abc1234-1');
+  assert.equal(git.calls, 1);
+  assert.equal(logs.length, 0, 'no warning when git answers');
+
+  // (d) without git: the package.json version with -1, and a warning that names the fixes.
+  assert.equal(resolveVersion({ root, env: {}, git: fakeGit(null), log }), '0.0.0-1');
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /warning: git is not available/);
+  assert.match(logs[0], /D7_VERSION/);
+});
+
+test('an empty D7_VERSION counts as unset, and an empty --version is refused', (t) => {
+  const root = manifestRoot(t, '0.0.0');
+  const git = fakeGit({ count: '3', hash: 'abcdef0' });
+  assert.equal(resolveVersion({ root, env: { D7_VERSION: '' }, git, log: LOG_NONE }), '0.0.0+git3.abcdef0-1');
+  assert.throws(
+    () => resolveVersion({ cliVersion: '', root, env: {}, git, log: LOG_NONE }),
+    (err) => err instanceof BuildError && /"" from --version is not a valid Debian version/.test(err.message),
+  );
+});
+
+test('an invalid version stops the build and names the source that gave it', (t) => {
+  const root = manifestRoot(t, '0.0.0');
+  assert.throws(
+    () => resolveVersion({ cliVersion: 'v1', root, env: {}, git: fakeGit(null), log: LOG_NONE }),
+    (err) => err instanceof BuildError && /"v1" from --version is not a valid Debian version/.test(err.message) && /Fix --version/.test(err.message),
+  );
+  assert.throws(
+    () => resolveVersion({ root, env: { D7_VERSION: '1.0 beta' }, git: fakeGit(null), log: LOG_NONE }),
+    (err) => err instanceof BuildError && /from D7_VERSION/.test(err.message),
+  );
+  const badManifest = manifestRoot(t, 'release-2');
+  assert.throws(
+    () => resolveVersion({ root: badManifest, env: {}, git: fakeGit({ count: '3', hash: 'abcdef0' }), log: LOG_NONE }),
+    (err) => err instanceof BuildError && /from the root package.json/.test(err.message),
+  );
+  assert.throws(
+    () => resolveVersion({ root: makeTemp(t), env: {}, git: fakeGit(null), log: LOG_NONE }),
+    (err) => err instanceof BuildError && /Missing .*package\.json/.test(err.message),
+  );
+});
+
+test('derived versions with more commits compare as newer, segment by segment', () => {
+  const derived = (count) => `0.0.0+git${count}.abc1234-1`;
+  assert.ok(compareVersions(derived(9), derived(10)) < 0, 'nine commits sort below ten');
+  assert.ok(compareVersions(derived(99), derived(100)) < 0, 'ninety-nine sort below one hundred');
+  assert.ok(compareVersions(derived(10), derived(11)) < 0);
+  assert.equal(compareVersions(derived(10), derived(10)), 0);
+  assert.ok(compareVersions('0.0.0-1', derived(1)) < 0, 'a derived version is newer than the fixed 0.0.0-1 build');
+  assert.ok(compareVersions('1.2.3-1', '1.10.0-1') < 0, 'the base version compares by number too');
+});
+
+test('dpkg agrees with the comparison, where dpkg is installed', (t) => {
+  const probe = spawnSync('dpkg', ['--version'], { encoding: 'utf8' });
+  if (probe.error || probe.status !== 0) return t.skip('dpkg is not available on this machine');
+  const pairs = [
+    ['0.0.0+git9.abc1234-1', '0.0.0+git10.abc1234-1'],
+    ['0.0.0-1', '0.0.0+git1.abc1234-1'],
+    ['1.2.3-1', '1.10.0-1'],
+  ];
+  for (const [older, newer] of pairs) {
+    assert.equal(spawnSync('dpkg', ['--compare-versions', older, 'lt', newer]).status, 0, `${older} lt ${newer}`);
+    assert.ok(compareVersions(older, newer) < 0, `${older} < ${newer}`);
+  }
+});
+
+test('gitVersionParts gives no answer for a folder inside another repository', () => {
+  // packaging/ is inside this repository, so git reports the top of the repository, not this folder.
+  assert.equal(gitVersionParts(path.join(ROOT, 'packaging')), null);
+});
+
+test('git gives the version of this repository, with the commit count of HEAD', (t) => {
+  const probe = spawnSync('git', ['rev-list', '--count', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+  if (probe.error || probe.status !== 0) return t.skip('git or a repository is not available');
+  const parts = gitVersionParts(ROOT);
+  if (parts === null) return t.skip('this checkout is not the top of a git repository');
+  assert.equal(parts.count, probe.stdout.trim());
+  assert.match(parts.hash, /^[0-9a-f]{4,40}$/);
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+  assert.equal(resolveVersion({ root: ROOT, env: {}, log: LOG_NONE }), `${manifest}+git${parts.count}.${parts.hash}-1`);
+});
+
+test('build() takes the version from D7_VERSION and writes the version file into the api tree only', (t) => {
+  const dir = makeTemp(t);
+  const before = Date.now();
+  const [api, web] = build({
+    root: ROOT,
+    out: path.join(dir, 'out'),
+    webDist: makeDist(dir),
+    env: { D7_VERSION: '2.0.0-3' },
+    git: fakeGit(null),
+    installDeps: false,
+    log: () => {},
+  });
+  assert.equal(api.name, 'doctor7-api');
+  const control = parseControl(fs.readFileSync(path.join(api.tree, 'DEBIAN', 'control'), 'utf8'));
+  assert.equal(control.Version, '2.0.0-3');
+  assert.match(api.tree, /doctor7-api_2\.0\.0-3$/);
+
+  const lines = fs.readFileSync(path.join(api.tree, 'usr', 'lib', 'doctor7', 'VERSION'), 'utf8').split('\n');
+  assert.equal(lines.length, 3, 'two lines and the final newline');
+  assert.equal(lines[0], 'version=2.0.0-3');
+  assert.match(lines[1], /^build-date=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  const stamp = Date.parse(lines[1].slice('build-date='.length));
+  assert.ok(stamp >= before && stamp <= Date.now(), 'the build date is the time of this build');
+  assert.equal(lines[2], '');
+
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(path.join(api.tree, 'usr', 'lib', 'doctor7', 'VERSION')).mode & 0o777, 0o644);
+  }
+  assert.equal(fs.existsSync(path.join(web.tree, 'usr', 'lib', 'doctor7', 'VERSION')), false, 'only the API has the file');
+});
+
+test('versionFileText writes the two lines that the API reads', () => {
+  assert.equal(versionFileText('1.2.3-1', '2026-11-19T06:53:53.715Z'), 'version=1.2.3-1\nbuild-date=2026-11-19T06:53:53.715Z\n');
 });

@@ -150,3 +150,47 @@ test('start-idp.sh starts the provider with the first usable Node.js 22', { skip
   assert.equal(line, 'fake-node server.js');
   assert.match(cwd.replace(/\\/g, '/'), /\/mock-idp$/);
 });
+
+
+// ---- The /idp fragment (K-21) -----------------------------------------------
+
+const FRAGMENT = path.join(DEMO, 'etc', 'doctor7', 'vhost-demo.conf');
+const EXAMPLE = path.join(PACKAGING, 'apache', 'idp-demo.conf.example');
+const WEB_VHOST = path.join(PACKAGING, 'web', 'etc', 'apache2', 'sites-available', 'doctor7.conf');
+
+// The lines of a file that are directives: not empty, and not comments.
+const directives = (text) =>
+  text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'));
+
+test('the demo package ships the /idp fragment with the proxy rules and nothing of the site', () => {
+  const text = fs.readFileSync(FRAGMENT, 'utf8');
+  const lines = directives(text);
+  assert.ok(lines.includes('ProxyPass /idp/ http://127.0.0.1:4010/'), 'ProxyPass of /idp/');
+  assert.ok(lines.includes('ProxyPassReverse /idp/ http://127.0.0.1:4010/'), 'ProxyPassReverse of /idp/');
+  assert.ok(lines.includes('<Location "/idp/">'), 'the /idp/ Location block');
+  assert.doesNotMatch(text, /<Location "\/">/);
+  assert.doesNotMatch(text, /VirtualHost|ServerName|SSLEngine|SSLCertificate|Require all denied/);
+  assert.doesNotMatch(text, /\r/, 'LF line endings');
+});
+
+test('every directive of the fragment is a line of the example, so the two cannot drift apart', () => {
+  const example = fs.readFileSync(EXAMPLE, 'utf8').split('\n').map((line) => line.trim());
+  for (const line of directives(fs.readFileSync(FRAGMENT, 'utf8'))) {
+    assert.ok(example.includes(line), `"${line}" is not in idp-demo.conf.example`);
+  }
+});
+
+test('the web virtual host includes the fragment with IncludeOptional, as the last directive of the TLS host', () => {
+  const vhost = fs.readFileSync(WEB_VHOST, 'utf8');
+  const tls = /<VirtualHost \*:443>([\s\S]*?)<\/VirtualHost>/.exec(vhost);
+  assert.ok(tls, 'the TLS host exists');
+  const body = directives(tls[1]);
+  assert.equal(body[body.length - 1], 'IncludeOptional /etc/doctor7/vhost-demo.conf');
+
+  const all = directives(vhost);
+  assert.equal(all.filter((line) => line.includes('vhost-demo.conf')).length, 1, 'the fragment is included once');
+  assert.ok(!all.some((line) => /^Include\s/.test(line) && line.includes('vhost-demo')), 'the include is not mandatory');
+});
