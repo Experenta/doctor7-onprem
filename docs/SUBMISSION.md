@@ -39,8 +39,8 @@ a service account, and Kiro.
 
 ## How we used Kiro
 
-Kiro CLI agents built the project. 26 tasks were given to Kiro agents: K-01 to K-26 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task
-had a written contract and its own branch. From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, and K-25, which have none. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, and k-26. There is no folder for K-11, K-15, and K-25. The repository has steering files in `.kiro/steering/` and
+Kiro CLI agents built the project. 28 tasks were given to Kiro agents: K-01 to K-28 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task
+had a written contract and its own branch. From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, and k-28. There is no folder for K-11, K-15, K-25, and K-27. The repository has steering files in `.kiro/steering/` and
 two hook files in `.kiro/hooks/`. The hooks have not been tested in the Kiro IDE.
 
 A director agent, supervised by a person, reviewed each task. Before each pull request it ran
@@ -52,7 +52,7 @@ and how it was corrected, and what was not verified.
 
 ## How to try it
 
-1. Open `<DEMO_URL>`. The demo is an instance with synthetic data and demonstration
+1. Open `https://3-139-52-25.sslip.io`. The demo is an instance with synthetic data and demonstration
    accounts.
 2. On the sign-in page, pick the account for the role you want to see. There are four roles:
    - **Professional.** Sees the appointments where the professional takes part, creates

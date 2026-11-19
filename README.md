@@ -14,8 +14,12 @@ repository is in English. All data in the repository is synthetic.
 
 ## Try the demo
 
-Open the demo at `<DEMO_URL>`. The demo is an instance with synthetic data and
-demonstration accounts. On the sign-in page, pick the account for the role you want
+Open the demo at `https://3-139-52-25.sslip.io`. The host `3-139-52-25.sslip.io` is the public host of the demo.
+The demo is an instance with synthetic data and demonstration accounts.
+
+The demo instance is available until 2027-01-29.
+
+On the sign-in page, pick the account for the role you want
 to see: Professional, Client, Administrator, or Auditor. The demo identity provider
 does not check passwords. The demo embeds a self-hosted Jitsi server for video. A real
 audio and video call between two participants has not been verified.
