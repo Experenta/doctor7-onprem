@@ -86,3 +86,14 @@ export function listAudit(filters = {}) {
   }
   return request(`/audit?${query.toString()}`);
 }
+
+
+// The demo-only Meet outage switch. The API answers 404 to every role when it does not run
+// with DEMO_MODE=1, so a caller that gets an error shows nothing.
+export function getMeetOutage() {
+  return request('/demo/meet-outage');
+}
+
+export function setMeetOutage(meetOutage) {
+  return request('/demo/meet-outage', { method: 'POST', body: { meetOutage } });
+}

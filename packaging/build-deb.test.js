@@ -450,7 +450,7 @@ test('the builder assembles the demo package tree with the provider and its temp
 
   const control = parseControl(fs.readFileSync(path.join(demo.tree, 'DEBIAN', 'control'), 'utf8'));
   assert.equal(control.Version, '1.2.3-1');
-  assert.equal(control.Depends, 'doctor7-api, adduser, systemd');
+  assert.equal(control.Depends, 'doctor7-api, adduser, systemd, openssl');
   assert.doesNotMatch(control.Depends, /\bnodejs\b/);
   assert.match(control['Installed-Size'], /^\d+$/);
 

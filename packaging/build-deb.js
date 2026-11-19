@@ -7,7 +7,8 @@
 //                                    [--web-dist DIR] [--no-deps]
 //
 //   api|web|all   Package to build. Default: all. "all" does not include demo.
-//   demo          Demo package with the mock identity provider. Demo only, never
+//   demo          Demo package with the mock identity provider and the Google Meet
+//                 simulator. Demo only, never
 //                 production. Build it on its own: node packaging/build-deb.js demo.
 //   --out DIR     Output directory. Default: packaging/build (git ignores it).
 //   --version V   Package version. See "Version" below.
@@ -154,6 +155,7 @@ function checkInputs({ root, packages, webDist, installDeps }) {
     missing(path.join(idp, 'server.js'), 'The mock identity provider is missing: restore tools/mock-idp/server.js.');
     missing(path.join(idp, 'rate-limit.js'), 'server.js requires tools/mock-idp/rate-limit.js, so restore it.');
     missing(path.join(root, 'packaging', 'apache', 'idp-demo.conf.example'), 'The demo vhost example is missing: restore packaging/apache/idp-demo.conf.example.');
+    missing(path.join(root, 'tools', 'mock-google', 'server.js'), 'The Google Meet simulator is missing: restore tools/mock-google/server.js.');
   }
   return problems;
 }
@@ -362,6 +364,12 @@ function addDemoPayload({ root, tree }) {
   copyText(
     path.join(root, 'packaging', 'apache', 'idp-demo.conf.example'),
     path.join(tree, 'usr', 'share', 'doctor7', 'idp-demo.conf.example'),
+  );
+  // The Google Meet simulator (K-36) is one file with no dependency. Its test and its
+  // test aid stay in the repository.
+  copyText(
+    path.join(root, 'tools', 'mock-google', 'server.js'),
+    path.join(tree, 'usr', 'lib', 'doctor7', 'mock-google', 'server.js'),
   );
 }
 

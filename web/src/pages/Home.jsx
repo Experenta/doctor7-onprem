@@ -15,6 +15,7 @@ import {
   WeekIcon,
 } from '../components/icons.jsx';
 import { EmptyState, Loaded } from '../components/States.jsx';
+import DemoOutageSwitch from '../components/DemoOutageSwitch.jsx';
 import { Avatar, Button, Card, Chip, InlineAlert, StatTile, StatusChip } from '../components/ui.jsx';
 import { canAccess, roleLabel } from '../lib/access.js';
 import { isInProgress, safeVideoUrl, statusLabel, upcomingAppointments } from '../lib/appointments.js';
@@ -460,6 +461,7 @@ export default function Home() {
           </Button>
         )}
       </WelcomeBand>
+      {role === 'admin' && <DemoOutageSwitch />}
       {canAccess(role, 'appointments') && <AppointmentHome role={role} />}
       {role === 'auditor' && <AuditSummary />}
     </>

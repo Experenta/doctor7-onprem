@@ -141,6 +141,90 @@ The provider keeps no state. Its codes and signing key live in memory, so a rest
 clears them. To reset the data, load a new seed into an empty database, as
 `docs/MIGRATION.md` describes.
 
+## Demo-only Meet outage switch
+
+The demo shows what the API does when Google Meet fails: it creates the meeting in Jitsi and says
+so. Real Google is not used in the demo. A simulator stands in for it, and an administrator can make
+the simulator fail with one switch.
+
+**This switch does not exist in production.** The API mounts its routes, and adds their gate rules,
+only when it starts with `DEMO_MODE=1`. A production server does not set `DEMO_MODE`. Then the path
+`/demo/meet-outage` has no rule, so the gate answers it like every other unknown path (`403`, audited
+as `no_rule`), the API holds no client for the simulator, and it never contacts it. Tests cover both
+cases (`api/src/demo/meetOutage.http.test.js`).
+
+### What it is
+
+- The simulator is `tools/mock-google/server.js`. It answers the token endpoint and the Meet
+  `spaces` endpoint of Google on `127.0.0.1:4020` only. It checks the signature of the assertion with
+  a public key. Its `mode` is `ok` or, during the outage, `http_500`.
+- `POST /demo/meet-outage` with `{"meetOutage": true}` or `{"meetOutage": false}` switches the mode.
+  Only the role `admin` can call it. The change is written to the audit log as `demo.meet_outage_on` or
+  `demo.meet_outage_off`, with the author and the result and without a body or a secret.
+- The API talks to the simulator over loopback with a secret that both sides read from their settings
+  files (`DEMO_MEET_CONTROL_SECRET` and `MOCK_GOOGLE_CONTROL_SECRET`). The simulator accepts control
+  only from a loopback peer with that secret, and only the modes `ok` and `http_500`.
+- A meeting that already exists is never moved. The outage changes the next meeting that a professional
+  starts.
+
+### How to turn it on
+
+Do this on the demo host, after the install of `doctor7-demo` (see "Install with the package"). The
+install already generated a synthetic key pair and the shared secret with `openssl`, in
+`/etc/doctor7/mock-google.env`, `/etc/doctor7/meet-demo-public-key.pem`, and
+`/etc/doctor7/meet-demo-credentials.env`. None of them is in the repository or in the package.
+
+1. `JITSI_BASE_URL` stays in `/etc/doctor7/api.env`, because Jitsi is the failover target.
+2. Install the drop-in that makes the API read the generated settings (they set `VIDEO_PROVIDER=meet`,
+   `DEMO_MODE=1`, the simulator addresses, the secret, and the synthetic credential):
+
+   ```sh
+   sudo install -D -m 0644 /usr/share/doctor7/doctor7-api-demo-meet.conf.example /etc/systemd/system/doctor7-api.service.d/demo-meet.conf
+   sudo systemctl daemon-reload
+   ```
+
+3. Start the simulator, then restart the API:
+
+   ```sh
+   sudo systemctl enable --now doctor7-mock-google.service
+   sudo systemctl restart doctor7-api.service
+   ```
+
+The settings are these (names and the fixed demo values; the secret and the key are generated):
+
+| Variable | Where | Value |
+|---|---|---|
+| `VIDEO_PROVIDER` | `meet-demo-credentials.env` | `meet` |
+| `DEMO_MODE` | `meet-demo-credentials.env` | `1` |
+| `GOOGLE_MEET_API_BASE_URL` | `meet-demo-credentials.env` | `http://127.0.0.1:4020` |
+| `GOOGLE_MEET_DELEGATED_USER` | `meet-demo-credentials.env` | `clinic.organizer@example.test` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | `meet-demo-credentials.env` | Synthetic service account, `token_uri` `http://127.0.0.1:4020/token` |
+| `DEMO_MEET_CONTROL_URL` | `meet-demo-credentials.env` | `http://127.0.0.1:4020` |
+| `DEMO_MEET_CONTROL_SECRET` | `meet-demo-credentials.env` | Generated on the host |
+| `MOCK_GOOGLE_CONTROL_SECRET` | `mock-google.env` | The same generated value |
+| `MOCK_GOOGLE_PUBLIC_KEY_FILE` | `mock-google.env` | `/etc/doctor7/meet-demo-public-key.pem` |
+
+To turn it off for good, delete `/etc/systemd/system/doctor7-api.service.d/demo-meet.conf`, run
+`systemctl daemon-reload`, restart `doctor7-api.service`, and disable `doctor7-mock-google.service`.
+
+### How to use it in the demo
+
+1. Sign in as the Administrator. The Home screen shows the card "Demo only: simulate a Google Meet
+   outage". It appears only when the API answers `GET /demo/meet-outage`. On a server without
+   `DEMO_MODE` the answer is an error, and the screen shows nothing.
+2. Start a meeting as the Professional on any scheduled appointment, with the outage off. The
+   appointment shows the chip "Google Meet (simulated)" and a link that opens in a new tab. The address
+   is made up by the simulator, so the page that it opens on `meet.google.com` is not a real room.
+3. As the Administrator, turn the switch on. The card says "Outage turned on". Then, as the Professional,
+   open another scheduled appointment and start its meeting. Google Meet does not answer, so the API
+   creates the meeting in Jitsi. The appointment shows the chip "Jitsi (fallback)", the notice "Google
+   Meet was not available, so this meeting was created in Jitsi.", and the Jitsi room in the page. The
+   audit log has `meeting.failover` and `meeting.create_jitsi`.
+4. Turn the switch off to go back to Google Meet.
+
+Not verified in this repository: the install on a Debian host (`openssl` key generation, file modes,
+the drop-in), the behavior of the units under systemd, and the screens in a real browser.
+
 ## Not covered by this demo
 
 - A password or any other check of the account. Anyone can pick a listed account.

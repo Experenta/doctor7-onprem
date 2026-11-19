@@ -25,7 +25,9 @@ test('meet: the professional creates a Meet meeting and one audit entry records 
   await withApi({}, async (api) => {
     const res = await api.call('POST', MEETING, { as: 'u-pro1', body: {} });
     assert.equal(res.status, 201);
-    assert.deepEqual(Object.keys(res.json).sort(), ['provider', 'url']);
+    assert.deepEqual(Object.keys(res.json).sort(), ['fallback', 'provider', 'simulated', 'url']);
+    assert.equal(res.json.fallback, false);
+    assert.equal(res.json.simulated, false, 'outside the demo a Meet meeting is real');
     assert.equal(res.json.provider, 'meet');
     assert.match(res.json.url, MEET_URL);
     assert.equal(res.headers.get('cache-control'), 'no-store');

@@ -2,6 +2,7 @@
 set -e
 
 UNIT=doctor7-mock-idp.service
+MEET_UNIT=doctor7-mock-google.service
 
 systemd_running() {
   [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
@@ -11,8 +12,10 @@ case "$1" in
   remove | deconfigure)
     if systemd_running; then
       systemctl stop "$UNIT" >/dev/null 2>&1 || true
+      systemctl stop "$MEET_UNIT" >/dev/null 2>&1 || true
       if [ "$1" = "remove" ]; then
         systemctl disable "$UNIT" >/dev/null 2>&1 || true
+        systemctl disable "$MEET_UNIT" >/dev/null 2>&1 || true
       fi
     fi
     ;;

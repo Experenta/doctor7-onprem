@@ -14,8 +14,11 @@ const { fakeDb, listen } = require('../../test/helpers');
 const { createMockGoogle } = require('../../../tools/mock-google/server');
 const { createTestServiceAccount } = require('../../../tools/mock-google/testing');
 const { loadVideoConfig } = require('./config');
+const { loadDemoConfig } = require('../demo/config');
 
 const JITSI_BASE_URL = 'https://jitsi.example.test';
+// Shared secret of the demo switch tests. It exists only in tests.
+const DEMO_SECRET = 'test-only-demo-control-secret-0123456789';
 
 // A logger that keeps every line, so tests can search the log.
 function capturingLogger() {
@@ -26,16 +29,22 @@ function capturingLogger() {
 
 // Starts a mock Google and the API. `env` adds to or replaces the video settings.
 // Appointment a1 (center c1): professional u-pro1, client u-cli1.
-async function startVideoApi({ env = {}, googleMode = 'ok' } = {}) {
+// `demo` is 'on' or 'off' (K-36). In both cases the mock Google has its control endpoint on,
+// so a test can see whether the API reaches it. 'on' also gives the API the demo config.
+// With 'off' the API reads DEMO_MODE from the process environment, where it is not set.
+// `security` replaces the security settings (for the write limit), `demoFetch` the fetch of the demo client.
+async function startVideoApi({ env = {}, googleMode = 'ok', demo, security, demoFetch } = {}) {
   const account = createTestServiceAccount();
   const google = await createMockGoogle({
     publicKeyPem: account.publicKeyPem,
     serviceAccountEmail: account.email,
     delegatedUsers: [account.delegatedUser],
+    controlSecret: demo ? DEMO_SECRET : undefined,
   }).start();
   google.mode = googleMode;
 
   let config;
+  let demoOptions;
   try {
     config = loadVideoConfig({
       VIDEO_PROVIDER: 'meet',
@@ -46,6 +55,12 @@ async function startVideoApi({ env = {}, googleMode = 'ok' } = {}) {
       MEET_TIMEOUT_MS: '300',
       ...env,
     });
+    if (demo === 'on') {
+      demoOptions = {
+        config: loadDemoConfig({ DEMO_MODE: '1', DEMO_MEET_CONTROL_URL: google.issuer, DEMO_MEET_CONTROL_SECRET: DEMO_SECRET }),
+        fetchImpl: demoFetch,
+      };
+    }
   } catch (err) {
     await google.close();
     throw err;
@@ -64,6 +79,8 @@ async function startVideoApi({ env = {}, googleMode = 'ok' } = {}) {
     careStore,
     auditStore,
     video: { config, meetingStore },
+    demo: demoOptions,
+    security,
   });
   const tokens = {};
   for (const user of USERS) {
@@ -71,8 +88,8 @@ async function startVideoApi({ env = {}, googleMode = 'ok' } = {}) {
   }
   const server = await listen(app);
 
-  async function call(method, path, { as = null, body, raw, contentType = 'application/json' } = {}) {
-    const headers = {};
+  async function call(method, path, { as = null, body, raw, contentType = 'application/json', headers: extra = {} } = {}) {
+    const headers = { ...extra };
     if (as) headers.Cookie = `d7_session=${tokens[as]}`;
     let payload;
     if (raw !== undefined) {
@@ -113,4 +130,4 @@ async function startVideoApi({ env = {}, googleMode = 'ok' } = {}) {
   };
 }
 
-module.exports = { startVideoApi, capturingLogger, JITSI_BASE_URL };
+module.exports = { startVideoApi, capturingLogger, JITSI_BASE_URL, DEMO_SECRET };

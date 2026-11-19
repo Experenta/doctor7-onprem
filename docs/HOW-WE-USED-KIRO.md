@@ -31,7 +31,7 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## Tasks, contracts, and checks
 
-- 35 tasks were given to Kiro agents: K-01 to K-35 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task had a
+- 36 tasks were given to Kiro agents: K-01 to K-36 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task had a
   written contract with an objective, the files it may change, what is out of scope, an
   acceptance criterion, and a verification command. (Source: `KIRO-USO.md`, Tasks.)
 - Each task had its own branch and one commit. The project director checked the task
@@ -47,7 +47,7 @@ checked. Each claim names its source. Three kinds of source appear:
   specification has three files: `requirements.md`, `design.md`, and `tasks.md`. The task
   was then implemented against that specification. (Source: `KIRO-USO.md`, Specifications;
   folder `.kiro/specs/`.)
-- The repository holds specifications for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, k-29, k-30, k-31, k-32, k-33, k-34, and k-35. There is no folder for K-11, K-15, K-25, and K-27. (Source: folder `.kiro/specs/`.)
+- The repository holds specifications for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, k-29, k-30, k-31, k-32, k-33, k-34, k-35, and k-36. There is no folder for K-11, K-15, K-25, and K-27. (Source: folder `.kiro/specs/`.)
 
 ## Steering
 

@@ -27,12 +27,12 @@ appointment.
 
 | Case | Answer |
 |---|---|
-| The appointment has no meeting | The server creates it, stores it, and answers `201 {provider, url}`. |
-| The appointment already has one | `200` with the same `{provider, url}`. No room is created and no provider is called. |
+| The appointment has no meeting | The server creates it, stores it, and answers `201 {provider, url, fallback, simulated}`. |
+| The appointment already has one | `200` with the same `{provider, url, fallback, simulated}`. No room is created and no provider is called. |
 | Two requests arrive together | One meeting is stored. The request that hits the primary key answers `200` with the stored one. The room it made is dropped. |
 | The appointment is `cancelled` or `completed` | `409 appointment_closed`. Nothing is created. |
 
-`GET /appointments/:id/meeting` answers `200 {provider, url}` to the professional and the
+`GET /appointments/:id/meeting` answers `200 {provider, url, fallback, simulated}` to the professional and the
 client of the appointment, and `404 no_meeting` while the professional has not started the
 meeting. A user who cannot read the appointment gets the usual `404 not_found`, and so do
 the administrator and the auditor, who do not take part. The web client of the client asks
@@ -111,6 +111,20 @@ created it, so the client knows where the meeting is.
 The server log gets one line per failover with the reason only
 (`Video failover to jitsi: meet_timeout.`).
 
+### What the client is told
+
+The answer has two booleans next to `provider` and `url`, so the web client can name the
+provider and explain a failover. Neither is stored. The database schema is unchanged.
+
+| Field | Value |
+|---|---|
+| `fallback` | `selected === 'meet' && provider === 'jitsi'`, where `selected` is `VIDEO_PROVIDER` now. Jitsi created the meeting while the server is set to Meet. A meeting stored while the server was set to `jitsi` reads `false`. If an administrator later changes the server from `jitsi` to `meet`, such a meeting reads `true`, because the flag follows the configuration. |
+| `simulated` | `true` only when the API runs with `DEMO_MODE=1` and `provider` is `meet`: in the demo a simulator stands in for Google. Always `false` on a server without `DEMO_MODE`. |
+
+The web client shows the chip "Google Meet (simulated)", "Google Meet", "Jitsi (fallback)", or
+"Jitsi", and, when `fallback` is `true`, the notice "Google Meet was not available, so this meeting
+was created in Jitsi."
+
 ## Audit entries
 
 All entries have target type `appointment` and the appointment id.
@@ -175,6 +189,14 @@ is stored in the repository. The real Google is never called by the tests.
 
 To run it by hand, set `MOCK_GOOGLE_PUBLIC_KEY_FILE` to a PEM public key and run
 `node tools/mock-google/server.js`. `MOCK_GOOGLE_PORT` changes the port (default 4020).
+
+The demo adds a control endpoint (K-36). With `MOCK_GOOGLE_CONTROL_SECRET` set (at least 16
+characters), `GET` and `POST /control/mode` read and set `mode`. It answers only a peer on
+loopback that sends the header `x-demo-control-secret` with that secret, and it refuses a request
+that carries `X-Forwarded-For` or `Forwarded`. `POST` accepts `{"mode":"ok"}` and
+`{"mode":"http_500"}` only. Without the secret setting, the path answers `404`. The API uses this
+endpoint through the demo-only switch of `docs/DEMO.md`, which turns a Meet outage on and off so
+that the failover above can be shown.
 
 ```sh
 node --test "api/src/video/**/*.test.js" "tools/mock-google/**/*.test.js"

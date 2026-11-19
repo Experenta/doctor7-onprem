@@ -1,0 +1,49 @@
+# doctor7-mock-google: demo Google Meet simulator. Demo only, never production.
+#
+# This unit runs the simulator of the two Google endpoints that the API uses to create a
+# Meet meeting. It makes no call to Google. It listens on 127.0.0.1 only, and its control
+# endpoint answers only a loopback caller that sends the shared demo secret. Do not run it
+# on a production server. The unit is disabled by default: the package installs it disabled
+# and stopped. An administrator enables it on the demo host with:
+# systemctl enable --now doctor7-mock-google.service
+#
+# /etc/doctor7/mock-google.env holds the control secret and the path of the public key. The
+# package generates it on install. See docs/DEMO.md.
+
+[Unit]
+Description=doctor7 demo Google Meet simulator (synthetic, loopback only, demo only)
+After=network.target
+
+[Service]
+Type=simple
+User=doctor7-meet
+Group=doctor7-meet
+EnvironmentFile=/etc/doctor7/mock-google.env
+Environment=MOCK_GOOGLE_PORT=4020
+ExecStart=/usr/lib/doctor7/start-google.sh
+WorkingDirectory=/usr/lib/doctor7/mock-google
+Restart=on-failure
+RestartSec=5
+
+# Hardening. The simulator writes nothing to disk and needs no privileges.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallArchitectures=native
+# The simulator talks to loopback only, so the unit may not reach any other address.
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target
