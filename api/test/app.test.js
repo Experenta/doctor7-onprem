@@ -88,9 +88,9 @@ test('requests over the rate limit receive 429 with a JSON error', async () => {
   });
   const server = await listen(app);
   try {
-    assert.equal((await fetch(`${server.url}/healthz`)).status, 200);
-    assert.equal((await fetch(`${server.url}/healthz`)).status, 200);
-    const res = await fetch(`${server.url}/healthz`);
+    assert.equal((await fetch(`${server.url}/no-such-route`)).status, 404);
+    assert.equal((await fetch(`${server.url}/no-such-route`)).status, 404);
+    const res = await fetch(`${server.url}/no-such-route`);
     const text = await res.text();
     assert.equal(res.status, 429);
     assert.deepEqual(JSON.parse(text), {
@@ -99,6 +99,55 @@ test('requests over the rate limit receive 429 with a JSON error', async () => {
     assert.ok(!STACK_PATTERN.test(text));
   } finally {
     await server.close();
+  }
+});
+
+test('the probe endpoints are not rate limited', async () => {
+  const app = createApp({
+    db: fakeDb(),
+    logger: silentLogger(),
+    rateLimit: { windowMs: 60 * 1000, limit: 1 },
+  });
+  const server = await listen(app);
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      assert.equal((await fetch(`${server.url}/healthz`)).status, 200);
+      assert.equal((await fetch(`${server.url}/readyz`)).status, 200);
+    }
+  } finally {
+    await server.close();
+  }
+});
+
+test('TRUST_PROXY makes the rate limit use the forwarded client IP', async () => {
+  const forwarded = (ip) => ({ headers: { 'X-Forwarded-For': ip } });
+  const make = (trustProxy) =>
+    listen(
+      createApp({
+        db: fakeDb(),
+        logger: silentLogger(),
+        trustProxy,
+        rateLimit: { windowMs: 60 * 1000, limit: 1 },
+      })
+    );
+
+  // One proxy is trusted: two forwarded addresses are two clients.
+  const trusted = await make(1);
+  try {
+    assert.equal((await fetch(`${trusted.url}/no-such-route`, forwarded('203.0.113.10'))).status, 404);
+    assert.equal((await fetch(`${trusted.url}/no-such-route`, forwarded('203.0.113.11'))).status, 404);
+    assert.equal((await fetch(`${trusted.url}/no-such-route`, forwarded('203.0.113.10'))).status, 429);
+  } finally {
+    await trusted.close();
+  }
+
+  // No proxy is trusted: the header is ignored, so both requests share one client.
+  const untrusted = await make(0);
+  try {
+    assert.equal((await fetch(`${untrusted.url}/no-such-route`, forwarded('203.0.113.10'))).status, 404);
+    assert.equal((await fetch(`${untrusted.url}/no-such-route`, forwarded('203.0.113.11'))).status, 429);
+  } finally {
+    await untrusted.close();
   }
 });
 

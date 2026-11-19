@@ -13,7 +13,12 @@ function start(env = process.env) {
 
   const pool = createPool(config.databaseUrl);
   const db = createDatabase(pool);
-  const app = createApp({ db, rateLimit: config.rateLimit });
+  const app = createApp({
+    db,
+    rateLimit: config.rateLimit,
+    trustProxy: config.trustProxy,
+    auth: { config: config.auth },
+  });
 
   const server = app.listen(config.port, config.host, () => {
     process.stdout.write(`doctor7-onprem API listening on ${config.host}:${config.port}\n`);

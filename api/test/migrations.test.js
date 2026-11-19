@@ -66,11 +66,20 @@ test('ids, foreign keys, and emails use the binary collation', () => {
   assert.ok(checked >= 10, `expected to check many id columns, checked ${checked}`);
 });
 
-test('the schema declares exactly the six application tables', () => {
+test('the schema declares exactly the application and sign-in tables', () => {
   const names = migrations.flatMap((m) => createdTables(m.up));
   assert.deepEqual(
     [...names].sort(),
-    ['appointments', 'audit_log', 'centers', 'chat_messages', 'consultations', 'users']
+    [
+      'appointments',
+      'audit_log',
+      'centers',
+      'chat_messages',
+      'consultations',
+      'login_attempts',
+      'sessions',
+      'users',
+    ]
   );
 });
 

@@ -3,7 +3,7 @@
   "description": "doctor7-onprem API: Express over MariaDB, with SQL migrations and a parameterized data access layer.",
   "private": true,
   "version": "1.0.0",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=22"
   },
@@ -16,6 +16,7 @@
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.5",
     "helmet": "^8.3.0",
+    "jose": "^6.2.18",
     "mysql2": "^3.24.6"
   }
 }

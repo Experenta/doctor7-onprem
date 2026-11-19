@@ -17,7 +17,8 @@
 
 ## Tests
 
-- Run `npm test` from the repository root. It runs `node --test scripts`.
+- Run `npm test` from the repository root. It runs
+  `node --test "scripts/**/*.test.js" "api/**/*.test.js"`.
 - The test suite includes the secret scanner. The scanner checks cloud key and
   token patterns and the forbidden word list.
 
