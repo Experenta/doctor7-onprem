@@ -282,12 +282,22 @@ describe('Appointment screen structure', () => {
   it('shows the participants with their initials, and the status as a chip', async () => {
     page();
     const head = (await screen.findByRole('heading', { name: 'Appointment' })).closest('header');
-    expect(within(head).getByText('u-ana')).toBeInTheDocument();
+    expect(within(head).getByText('Ana Rivera')).toBeInTheDocument();
     expect(within(head).getByText('u-luis')).toBeInTheDocument();
-    expect(within(head).getByText('AN')).toBeInTheDocument();
+    expect(within(head).getByText('AR')).toBeInTheDocument();
     expect(within(head).getByText('LU')).toBeInTheDocument();
     expect(within(head).getByText('Scheduled')).toHaveClass('chip-teal');
     expect(within(head).getByText(/Dec 2, 2026, 5:50\sAM\sGMT-5/)).toBeInTheDocument();
+  });
+
+  it('shows the signed-in client by name, and the professional by identifier', async () => {
+    page({}, 'client');
+    const head = (await screen.findByRole('heading', { name: 'Appointment' })).closest('header');
+    expect(within(head).getByText('Luis Mora')).toBeInTheDocument();
+    expect(within(head).getByText('LM')).toBeInTheDocument();
+    expect(within(head).getByText('u-ana')).toBeInTheDocument();
+    expect(within(head).getByText('AN')).toBeInTheDocument();
+    expect(within(head).queryByText('u-luis')).not.toBeInTheDocument();
   });
 
   it('puts the actions in the head', async () => {

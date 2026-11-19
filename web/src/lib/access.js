@@ -24,11 +24,19 @@ export function canAccess(role, screen) {
   return Boolean(SCREEN_ROLES[screen] && SCREEN_ROLES[screen].includes(role));
 }
 
-// Navigation entries. `icon` is the name of a component in icons.jsx.
+// Navigation entries. `icon` is the name of a component in icons.jsx. `shortLabel`, when set,
+// replaces the label in the narrow bottom bar only. The link keeps `label` as its name.
 const NAV = [
   { screen: 'home', to: '/', label: 'Home', icon: 'HomeIcon', end: true },
   { screen: 'appointments', to: '/appointments', label: 'Appointments', icon: 'CalendarIcon', end: true },
-  { screen: 'newAppointment', to: '/appointments/new', label: 'New appointment', icon: 'PlusIcon', end: true },
+  {
+    screen: 'newAppointment',
+    to: '/appointments/new',
+    label: 'New appointment',
+    shortLabel: 'New',
+    icon: 'PlusIcon',
+    end: true,
+  },
   { screen: 'audit', to: '/audit', label: 'Audit log', icon: 'ShieldIcon', end: true },
 ];
 

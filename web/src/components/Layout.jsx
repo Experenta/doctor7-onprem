@@ -25,8 +25,16 @@ export default function Layout() {
         <nav id="main-nav" className="side-nav" aria-label="Main">
           {items.map((item) => {
             const Icon = icons[item.icon];
+            // The bottom bar shows `data-short` (see app.css). The link name stays the full label.
             return (
-              <NavLink key={item.to} to={item.to} end={item.end} className="side-link">
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className="side-link"
+                data-short={item.shortLabel}
+                aria-label={item.shortLabel ? item.label : undefined}
+              >
                 <Icon />
                 <span>{item.label}</span>
               </NavLink>
