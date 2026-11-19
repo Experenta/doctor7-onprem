@@ -53,6 +53,19 @@ To run the scanner by itself:
 node scripts/scan-secrets.js
 ```
 
+### Build the Debian packages
+
+```sh
+npm run build --workspace=web
+node packaging/build-deb.js all --out /tmp/doctor7-debs
+node packaging/build-deb.js demo --out /tmp/doctor7-debs
+```
+
+`all` builds `doctor7-api` and `doctor7-web`. `demo` builds the demo package, which
+is never part of `all`. The package version comes from the first source that is
+set: `--version`, the `D7_VERSION` variable, git (`<version>+git<commit count>.<hash>-1`),
+and the root `package.json` as the last resort. `docs/OPERATIONS.md` has the details.
+
 ### Forbidden-word list
 
 The scanner checks key patterns in every file that would enter a commit. It

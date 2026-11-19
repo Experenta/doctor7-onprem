@@ -20,15 +20,17 @@ of the service, never in this repository.
 |---|---|
 | `doctor7-api` | API code with production dependencies, `doctor7-api.service`, the chat purge service and timer, backup and restore commands, the `doctor7` service user. |
 | `doctor7-web` | Static files of the web application and the Apache virtual host. |
-| `doctor7-demo` | Demo only. Mock identity provider and its unit. Not in `all`. See the Demo package section. |
+| `doctor7-demo` | Demo only. Mock identity provider, its unit, and the `/idp/` fragment of the virtual host. Not in `all`. See the Demo package section. |
 
 | Path | Content |
 |---|---|
 | `/usr/lib/doctor7/api` | API code. `start-api.sh` and `run-task.sh` sit one level above. |
+| `/usr/lib/doctor7/VERSION` | Package version and build date, read by `GET /version`. |
 | `/usr/lib/doctor7/node_modules` | Production dependencies. |
 | `/etc/doctor7/api.env` | API settings. Root-owned, mode 0600. |
 | `/etc/doctor7/backup.conf`, `/etc/doctor7/backup.cnf` | Backup settings and database client options. Mode 0600. |
 | `/etc/doctor7/web.vars.conf` | Apache variables of the virtual host. |
+| `/etc/doctor7/vhost-demo.conf` | `/idp/` lines, from `doctor7-demo`. |
 | `/var/lib/doctor7` | State directory of the service (the files layer). |
 | `/usr/share/doctor7/web` | Static files. |
 | `/etc/apache2/sites-available/doctor7.conf` | Apache virtual host. |
@@ -46,6 +48,33 @@ The builder runs `npm ci --omit=dev` for the API, so the package carries its
 dependencies and the install runs no `npm`. Without `dpkg-deb`, the builder
 checks every input and leaves the package trees in the output directory. A
 missing input stops the build with a message that says what to fix.
+
+### Build versions
+
+The builder takes the package version from the first source that is set:
+
+1. `--version V`.
+2. The environment variable `D7_VERSION`. An empty value counts as unset.
+3. git: `<version of the root package.json>+git<commit count>.<short hash>-1`, for
+   example `0.0.0+git42.abc1234-1`. The commit count is the number of commits that
+   `HEAD` reaches. The tree must be the top of its own git repository.
+4. No git: `<version of the root package.json>-1`, with a warning.
+
+Every version must start with a digit and use only letters, digits, and `. + ~ -`.
+Any other value stops the build, and the message names the source of the value.
+
+`apt` installs a package as an upgrade only when its version is newer. The commit
+count rises with each commit on one branch. A build from another branch can have a
+lower count, so build releases from one branch, or set `D7_VERSION` to a version of
+your own:
+
+```sh
+D7_VERSION=2026.11.1-1 node packaging/build-deb.js all --out /tmp/doctor7-debs
+```
+
+The `doctor7-api` package also holds `/usr/lib/doctor7/VERSION`. It has two lines,
+`version=` and `build-date=`, with the version and the time of the build. `GET /version`
+reads that file (see `docs/API.md`).
 
 ### Install
 
@@ -67,6 +96,45 @@ For the web package, set the values in `/etc/doctor7/web.vars.conf`, then
 The package enables the Apache modules `proxy`, `proxy_http`, `proxy_wstunnel`,
 `headers`, `rewrite`, `deflate`, `expires` and `ssl`. It does not enable the
 site and it does not create a certificate.
+
+### Configuration files and reinstall
+
+A conffile is a package file that dpkg tracks. When a new package version changes
+it, dpkg decides whether the file on the server or the file of the package wins.
+A local value is a settings file that the administrator fills in. No package ships
+a local value. The postinst creates it from a template when it is missing, and it
+never overwrites it.
+
+| File | Kind | Package | Created by | On reinstall or upgrade |
+|---|---|---|---|---|
+| `/etc/apache2/sites-available/doctor7.conf` | conffile | `doctor7-web` | the package | dpkg asks when you changed the file, unless you pass an option below. |
+| `/etc/doctor7/web.vars.conf` | local value | `doctor7-web` | postinst, from `web.vars.conf.example`, when missing | Not touched. |
+| `/etc/doctor7/api.env` | local value | `doctor7-api` | postinst, from `api.env.example`, when missing | Not touched. |
+| `/etc/doctor7/backup.conf` | local value | `doctor7-api` | postinst, from `backup.conf.example`, when missing | Not touched. |
+| `/etc/doctor7/backup.cnf` | local value | none | the administrator, from `backup.cnf.example` | Not touched. It holds the database password. |
+| `/etc/doctor7/idp-demo.env` | local value | `doctor7-demo` | postinst, from `idp-demo.env.example`, when missing | Not touched. |
+| `/etc/doctor7/vhost-demo.conf` | package file, not a conffile | `doctor7-demo` | the package | Replaced on each install. It holds no value, so no local edit is kept. |
+| `/usr/share/doctor7/*.example` | package file | all | the package | Replaced on each install. They are templates. |
+
+Two options answer the dpkg question about a conffile without a prompt:
+
+- `--force-confold` keeps the local file, the one on the server. Use it when you
+  changed the virtual host here and want to keep the change. dpkg keeps a copy of the
+  file it did not install beside it, with a `.dpkg-` suffix. Read that copy before the
+  next upgrade.
+- `--force-confnew` takes the file of the package. Use it to go back to the package
+  version. Your edits are lost from the file, and dpkg keeps a copy of them beside it,
+  with a `.dpkg-` suffix.
+
+```sh
+sudo dpkg -i --force-confold ./doctor7-web_<version>_all.deb
+sudo dpkg -i --force-confnew ./doctor7-web_<version>_all.deb
+```
+
+Neither option changes a local value, because local values are not conffiles.
+The install and upgrade scripts in `packaging/scripts/` pass neither option to
+`apt-get`. Check the dpkg question on the terminal, or pass one of the options when
+you run the package tools by hand.
 
 ### Apache variables
 
@@ -94,6 +162,9 @@ What the virtual host does:
   `Referrer-Policy`, `Permissions-Policy` and `Cross-Origin-Opener-Policy`.
 - A path without a file gets `index.html`, so client-side routes work on reload.
   `/api`, `/ws` and `/idp` are excluded from that rule.
+- The virtual host includes `/etc/doctor7/vhost-demo.conf` at the end of the TLS host,
+  with `IncludeOptional`. `doctor7-demo` installs that file, and it holds the `/idp/`
+  proxy rules. Without the file the site works, and `/idp/` is not proxied.
 
 ## Settings
 
@@ -115,6 +186,13 @@ form `NAME=value`. A value with spaces or JSON goes in single quotes.
 | `TRUST_PROXY` | No | Number of reverse proxies in front of the API, from 0 to 10. Default 0. Use 1 behind Apache. |
 | `RATE_LIMIT_WINDOW_MS` | No | Length of the rate-limit window, from 1 to 86400000. Default 60000. |
 | `RATE_LIMIT_MAX` | No | Requests allowed per client in one window, from 1 to 1000000. Default 120. |
+
+### Version
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `D7_VERSION_FILE` | No | File with the package version and the build date, read by `GET /version`. Default `/usr/lib/doctor7/VERSION`, which `doctor7-api` installs. When the file is missing, `/version` reports the version of `package.json` and the build date from `BUILD_DATE`. |
+| `BUILD_DATE` | No | Build date, used only when the version file is missing. An ISO 8601 UTC instant with a time, such as `2026-11-19T03:26:00Z`. A date without a time is ignored, and `/version` answers `null`. |
 
 ### Security
 
@@ -188,6 +266,7 @@ sign-in variables after every install.
 - `GET /healthz` answers 200 without touching the database.
 - `GET /readyz` answers 200 when the database answers a ping. The server does not
   ping the database at startup.
+- `GET /version` answers the package version and the build date. See `docs/API.md`.
 
 ## Shutdown
 
@@ -288,7 +367,8 @@ migrations, restarts the API, and checks `/readyz`
 (`DOCTOR7_HEALTH_URL` changes the address). It stops at the first failure and
 prints the rollback command. It never rolls back by itself. Apache keeps the
 changed virtual host file as a conffile: `dpkg` asks before it replaces a file
-you edited.
+you edited. The section "Configuration files and reinstall" lists the options that
+answer that question without a prompt.
 
 Rollback:
 
@@ -319,16 +399,16 @@ describes the whole demo.
   Node.js lookup, and on `adduser` and `systemd`.
 - It installs `/usr/lib/doctor7/mock-idp/`, `/usr/lib/doctor7/start-idp.sh`, and
   the unit `doctor7-mock-idp.service`. It creates the system user `doctor7-idp`
-  when that user is missing.
+  when that user is missing. It also installs the `/idp/` fragment, described below.
 - It creates `/etc/doctor7/idp-demo.env` from a template that holds names only. The
   file has mode 0640 and group `doctor7-idp`. The package creates it only when it
   is missing.
 - The install does not enable or start the unit. On the demo host, run
   `systemctl enable --now doctor7-mock-idp.service`.
-- On the demo host, the `/idp/` lines of `idp-demo.conf.example` go into the TLS
-  virtual host of the site, as `docs/DEMO.md` describes. The site's virtual host
-  excludes `/idp` from client routing, so those requests reach the provider and not
-  `index.html`.
+- The `/idp/` lines of `idp-demo.conf.example` are in `/etc/doctor7/vhost-demo.conf`.
+  The TLS host of `doctor7-web` includes that file, so no edit is needed. It is not a conffile:
+  the package replaces it on each install, and dpkg removes it on remove. After an
+  install or a removal, run `apache2ctl configtest && systemctl reload apache2`.
 - `apt-get remove` stops and disables the unit and keeps the settings file.
   `apt-get purge` removes `/etc/doctor7/idp-demo.env`, and removes `/etc/doctor7`
   only when it is empty. It keeps the `doctor7-idp` user and every other file.

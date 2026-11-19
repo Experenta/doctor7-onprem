@@ -78,15 +78,14 @@ Install it on the demo host only. Never install it on a production server.
    creates the system user `doctor7-idp` and, when the file does not exist, the
    settings file `/etc/doctor7/idp-demo.env` with mode 0640. It never overwrites an
    existing settings file. It installs the unit `doctor7-mock-idp.service` but does
-   not enable or start it.
+   not enable or start it. It also installs `/etc/doctor7/vhost-demo.conf`, the
+   `/idp/` rules of the site.
 4. Fill in `/etc/doctor7/idp-demo.env` as shown in the Configuration section. Set
    `NODE_BIN` in that file only when Node.js 22 is not at `/opt/node/current/bin/node`
    and not in `PATH`.
-5. Add the `/idp/` lines of `/usr/share/doctor7/idp-demo.conf.example` to the TLS
-   virtual host of the demo host, the one that serves `/api`. Copy only the
-   `ProxyPass`, the `ProxyPassReverse`, and the `/idp/` `Location` block. Do not
-   copy the `/` block, the `ServerName`, or the certificate lines. Then run
-   `apache2ctl configtest` and reload Apache.
+5. Reload Apache: `sudo apache2ctl configtest && sudo systemctl reload apache2`. The
+   TLS host of `doctor7-web` includes `/etc/doctor7/vhost-demo.conf`, so no edit of
+   the virtual host is needed. Do not copy the `/` block of the example into the host.
 6. Enable and start the provider: `sudo systemctl enable --now doctor7-mock-idp.service`.
    Enable it at boot only when the demo host needs that. Nothing in the package
    enables the unit.
@@ -96,21 +95,31 @@ Check the result: `https://<host>/idp/.well-known/openid-configuration` must rep
 
 ### The /idp/ block
 
-The `/idp/` lines of `packaging/apache/idp-demo.conf.example` are the only part of
-that example that goes into the site's TLS virtual host. They are:
+The package `doctor7-demo` installs the `/idp/` rules as `/etc/doctor7/vhost-demo.conf`.
+The file is the only part of `packaging/apache/idp-demo.conf.example` that the site
+uses. Its content is:
 
 ```apache
-ProxyPass /idp/ http://127.0.0.1:4010/
-ProxyPassReverse /idp/ http://127.0.0.1:4010/
+ProxyRequests Off
+
 <Location "/idp/">
     Require all granted
 </Location>
+
+ProxyPass /idp/ http://127.0.0.1:4010/
+ProxyPassReverse /idp/ http://127.0.0.1:4010/
 ```
 
+The TLS host of `doctor7-web` ends with `IncludeOptional /etc/doctor7/vhost-demo.conf`.
+When the file is missing, Apache ignores the include, so `doctor7-web` works without
+the demo.
+
+Without the package, copy the same lines into the TLS virtual host by hand. Do not copy
+the `<Location "/">` block of the example. It denies every other path, and the site
+needs those paths.
+
 The web package's virtual host (`doctor7.conf`) excludes `/idp` from its client
-routing rule, so a request to `/idp/` is not answered with `index.html`. Do not
-copy the `<Location "/">` block of the example. It denies every other path, and
-the site needs those paths.
+routing rule, so a request to `/idp/` is not answered with `index.html`.
 
 ## Limits
 

@@ -22,7 +22,7 @@ appointment and consultation endpoints exist. The access rules are in
   `offset` (default 0).
 - Rate limit: 120 requests per client IP per 60 seconds by default. Set
   `RATE_LIMIT_MAX` and `RATE_LIMIT_WINDOW_MS` to change it. The probe endpoints
-  `/healthz` and `/readyz` are not rate limited. A request over the
+  `/healthz`, `/readyz` and `/version` are not rate limited. A request over the
   limit gets `429` with code `rate_limited`.
 - Security headers: every response carries the headers set by helmet, including
   `Content-Security-Policy`, `Strict-Transport-Security`, and
@@ -36,6 +36,7 @@ appointment and consultation endpoints exist. The access rules are in
 |---|---|---|---|
 | GET | `/healthz` | Public, no authentication | Liveness. Returns `ok` without querying the database. |
 | GET | `/readyz` | Public, no authentication | Readiness. Returns `503` when the database does not answer `SELECT 1`. |
+| GET | `/version` | Public, no authentication | Package version and build date. Returns `buildDate: null` when no build date is known. |
 | GET | `/auth/login` | Public | Starts sign-in. Redirects to the identity provider. |
 | GET | `/auth/callback` | Public | Finishes sign-in. Opens a session and redirects. |
 | POST | `/auth/logout` | Public (acts on the caller's own session) | Ends the current session, or all sessions of the user. |
@@ -86,6 +87,30 @@ Response `503` when the database is down:
 ```json
 {"error":{"code":"database_unavailable","message":"Database is not reachable."}}
 ```
+
+### GET /version
+
+Request:
+
+```sh
+curl -i http://127.0.0.1:3000/version
+```
+
+Response `200`:
+
+```json
+{"version":"0.0.0+git42.abc1234-1","buildDate":"2026-11-19T06:53:53.715Z"}
+```
+
+`version` is the package version, and `buildDate` is the time of the build. The API
+reads both when it starts, from the file named by `D7_VERSION_FILE`. The default is
+`/usr/lib/doctor7/VERSION`, which the `doctor7-api` package writes. The file has two
+lines: `version=` and `build-date=`. See `docs/OPERATIONS.md`, section Build versions.
+
+When the file is missing, `version` is the version of the API `package.json`, and
+`buildDate` comes from `BUILD_DATE`. Without a valid `BUILD_DATE`, `buildDate` is
+`null`. A file that cannot be read, or that has no version line, is logged once,
+and the same fallback applies. The route does not query the database.
 
 ## Authentication
 
