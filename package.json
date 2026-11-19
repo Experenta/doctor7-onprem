@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "test": "node --test \"scripts/**/*.test.js\" \"api/**/*.test.js\" \"tools/**/*.test.js\" \"seed/**/*.test.js\" \"packaging/**/*.test.js\"",
-    "test:web": "npm test --workspace=web"
+    "test:web": "npm test --workspace=web",
+    "verify": "npm run build --workspace=web && REQUIRE_BUNDLE_BUDGET=1 npm test"
   }
 }

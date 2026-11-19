@@ -14,6 +14,14 @@ const DIST = join(import.meta.dirname, '..', 'dist');
 const INDEX = join(DIST, 'index.html');
 const NEEDS_BUILD = 'The build output is missing. Run npm run build --workspace=web first.';
 
+// Without a build, the tests that measure it are skipped, so a clean clone passes
+// `npm test`. REQUIRE_BUNDLE_BUDGET=1 (set by `npm run verify`) makes a missing build fail instead.
+const REQUIRED = process.env.REQUIRE_BUNDLE_BUDGET === '1';
+const SKIP_BUILD_TESTS = !existsSync(INDEX) && !REQUIRED;
+const SKIP_NOTICE =
+  'bundle budget: SKIPPED. There is no build output in web/dist. ' +
+  'Run npm run build --workspace=web to measure the bundle, or npm run verify to build and run every check.';
+
 // The files that index.html loads before the first screen. Lazy screens are not
 // listed there, so they do not count.
 export function initialFiles(html) {
@@ -45,7 +53,7 @@ function initialFromBuild() {
   return initialFiles(readFileSync(INDEX, 'utf8'));
 }
 
-describe('bundle budget', () => {
+describe.skipIf(SKIP_BUILD_TESTS)('bundle budget (needs the build output)', () => {
   it('reads the output of the build', () => {
     expect(existsSync(INDEX), NEEDS_BUILD).toBe(true);
   });
@@ -67,10 +75,19 @@ describe('bundle budget', () => {
     const lazy = assets.filter((name) => name.endsWith('.js') && !initial.has(name));
     expect(lazy.length, 'no screen is in a file of its own').toBeGreaterThan(0);
   });
+});
 
+// The budget rule itself needs no build, so it always runs. This test also carries the
+// notice, because a skipped block prints nothing by itself.
+describe('bundle budget rule', () => {
   it('fails when a size is over its budget', () => {
     expect(checkBudget({ js: BUDGET.js + 1, css: BUDGET.css })).toEqual(['js']);
     expect(checkBudget({ js: BUDGET.js, css: BUDGET.css + 1 })).toEqual(['css']);
     expect(checkBudget({ js: BUDGET.js, css: BUDGET.css })).toEqual([]);
+  });
+
+  it('says why the build tests are skipped, when there is no build', () => {
+    // Written straight to stdout: Vitest does not show console output of passing tests by default.
+    if (SKIP_BUILD_TESTS) process.stdout.write(`\n${SKIP_NOTICE}\n`);
   });
 });
