@@ -130,7 +130,8 @@ Configuration errors that give `2`:
   `/auth/callback`: six sign-ins, two requests each. The API allows 20 of them per
   client address every 15 minutes (`RATE_LIMIT_LOGIN_MAX` and
   `RATE_LIMIT_LOGIN_WINDOW_MS`). Two remote runs within 15 minutes can hit the limit
-  and fail step 1 with `HTTP 429`. Wait, or raise `RATE_LIMIT_LOGIN_MAX` for the test.
+  and fail step 1 with `HTTP 429`. Wait, or raise `RATE_LIMIT_LOGIN_MAX` for the test. The sign-in limit is 20 requests
+every 15 minutes per client IP address, and everyone behind the same address shares it.
 - **Cookie path behind Apache.** The sign-in cookie `d7_login` has `Path=/auth`. Apache
   must rewrite it to `/api/auth` (`ProxyPassReverseCookiePath /auth /api/auth`), as the
   virtual host of the demo does. Without the rewrite, the callback does not get the
@@ -148,11 +149,14 @@ The API has three public probes. None needs a session, and none is rate limited.
 |---|---|---|
 | `GET /healthz` | `200 {"status":"ok"}` | Not read. |
 | `GET /readyz` | `200 {"status":"ready"}`, or `503 database_unavailable`. | Reads `SELECT 1`. |
-| `GET /version` | `200 {"version":"<api version>","buildDate":<ISO 8601 UTC or null>}` | Not read. |
+| `GET /version` | `200 {"version":"<package version>","buildDate":<ISO 8601 UTC or null>}` | Not read. |
 
-`buildDate` comes from the environment variable `BUILD_DATE`. It is `null` when the
-variable is unset or is not a UTC instant such as `2026-11-19T03:26:00Z`. The
-Debian build does not set it yet.
+`version` and `buildDate` come from the file `VERSION` of the installed package,
+`/usr/lib/doctor7/VERSION` by default (`D7_VERSION_FILE`). That file holds the package
+version and the time of its build. When the file is missing, `version` is the version
+in the API `package.json`, and `buildDate` comes from the environment variable
+`BUILD_DATE`. In that case `buildDate` is `null` when the variable is unset or is not a
+UTC instant such as `2026-11-19T03:26:00Z`.
 
 ## Tests
 
