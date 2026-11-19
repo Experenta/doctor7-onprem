@@ -288,4 +288,4 @@ function createCareRouter({ store, now = () => new Date(), newId = randomUUID, a
   return router;
 }
 
-module.exports = { createCareRouter };
+module.exports = { createCareRouter, readDenialReason };

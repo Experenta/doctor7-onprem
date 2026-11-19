@@ -37,8 +37,9 @@ workspaces and has no dependencies.
 npm test
 ```
 
-This runs `node --test "scripts/**/*.test.js" "api/**/*.test.js"`, which includes
-the secret and forbidden-word scan of the repository and the API tests.
+This runs `node --test "scripts/**/*.test.js" "api/**/*.test.js" "tools/**/*.test.js"`,
+which includes the secret and forbidden-word scan of the repository, the API
+tests, and the simulator tests.
 
 To run the scanner by itself:
 

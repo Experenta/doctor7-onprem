@@ -22,6 +22,14 @@ Each event writes one entry, except where a row says otherwise.
 | A consultation is read | `consultation.read` | `success` | `consultation`, with the id | the center of its appointment |
 | An appointment is created | `appointment.create` | `success` | `appointment`, with the new id | the caller's center |
 | A consultation is created | `consultation.create` | `success` | `consultation`, with the new id | the center of its appointment |
+| A video meeting is created in Google Meet or Jitsi | `meeting.create_meet` or `meeting.create_jitsi` | `success` | `appointment`, with the id | the center of the appointment |
+| Google Meet fails, times out, or hits its quota, and the meeting moves to Jitsi | `meeting.failover` | `failure`, with reason `meet_error`, `meet_timeout`, or `meet_quota` | `appointment`, with the id | the center of the appointment |
+| A meeting request is refused, or no video provider is configured | `meeting.create` | `denied`, with a reason, or `failure` with reason `not_configured` | `appointment`, with the id when it is known | see the center rule below |
+| A chat connection opens | `chat.connect` | `success` | `appointment`, with the id | the center of the appointment |
+| A chat connection is refused | `chat.connect` | `denied`, with a reason | `appointment`, with the id when it is known | see the center rule below |
+| A chat message is stored | `chat.send` | `success` | `appointment`, with the id | the center of the appointment |
+| A chat message is refused because the appointment is closed | `chat.send` | `denied`, reason `appointment_closed` | `appointment`, with the id | the center of the appointment |
+| The chat retention purge runs | `chat.purge` | `success` | `chat`, no id | none |
 | A read of an appointment or consultation is refused with 404 | `appointment.read` or `consultation.read` | `denied`, with reason | the requested type and id | see the center rule below |
 | A write is refused with 403 | the route action, such as `appointment.create` | `denied`, with reason | the type the route names | see the center rule below |
 | A request matches no route rule | `request.denied` | `denied`, reason `no_rule` | `route`, no id | none |
@@ -51,7 +59,7 @@ A caller from another center does not see it.
 | `actor_id` | The signed-in user who made the request. `NULL` when no user was signed in, for example a failed sign-in or a request with no route rule. |
 | `center_id` | The center the entry belongs to. `NULL` when no center is known. |
 | `action` | What was attempted, such as `consultation.read`. |
-| `target_type` | The kind of record: `consultation`, `appointment`, `user`, `session`, `route`, or `audit`. |
+| `target_type` | The kind of record: `consultation`, `appointment`, `user`, `session`, `route`, `audit`, or `chat`. |
 | `target_id` | The id of the record. `NULL` when the record is not known. |
 | `outcome` | `success`, `denied` (refused by the authorization rules), or `failure` (the action did not complete). |
 | `reason` | Internal code for a `denied` or `failure` entry. Never sent to the caller. |
@@ -72,6 +80,9 @@ A caller from another center does not see it.
 | `participant_other_center` | A participant of a new appointment belongs to another center. |
 | `participant_wrong_role` | A participant of a new appointment has the wrong role. |
 | `no_rule` | No route rule matches the request. |
+| `appointment_closed` | The appointment is not `scheduled`, so its chat is closed. A message or a connection is refused. |
+| `not_configured` | `VIDEO_PROVIDER` is not set, so no meeting can be created. |
+| `meet_error`, `meet_timeout`, `meet_quota` | Google Meet failed, hit its time limit, or hit its quota. The meeting moves to Jitsi. |
 | `user_not_found` | The verified email has no `users` row. |
 | `no_session` | A logout named no live session. |
 | `state_unknown`, `attempt_expired`, `binding_mismatch`, `invalid_request`, `provider_returned_error` | The sign-in callback refused the request. |
@@ -133,3 +144,6 @@ audit entry.
 - The query filters on `center_id` and sorts by `occurred_at`. The only index on the
   table covers `occurred_at`. A large log may need an index on
   `(center_id, occurred_at)` in a later migration.
+- A chat message is stored before its `chat.send` entry is written. If the entry write fails, the message stays stored, the sender gets `server_error`, and the other participants do not receive it live. It appears in the history on the next connect.
+- A chat connection that ends while it is open, because its session was revoked or its appointment closed, writes no entry. Only the refused attempt to connect again is audited.
+- A chat entry records the socket address as `ip`. Behind Apache this is the proxy address, not the client. The REST routes read the client address from `TRUST_PROXY`.

@@ -2,8 +2,9 @@
 
 const { Router } = require('express');
 const { ApiError } = require('../http/errors');
-const { can, rolesFor } = require('../authz/policy');
+const { can } = require('../authz/policy');
 const { requestContext } = require('../audit/entry');
+const { readDenialReason } = require('../care/router');
 
 const ID_MAX_LENGTH = 64;
 
@@ -21,15 +22,6 @@ function appointmentResource(appointment) {
     professionalId: appointment.professionalId,
     clientId: appointment.clientId,
   };
-}
-
-// Why the caller may not read the appointment. It goes to the audit log only.
-// The caller gets the same 404 for every reason.
-function readDenialReason(user, resource) {
-  if (!user.centerId) return 'no_center';
-  if (resource.centerId !== user.centerId) return 'other_center';
-  if (!rolesFor(resource.type, 'read').includes(user.role)) return 'role_not_allowed';
-  return 'not_participant';
 }
 
 // Handlers assume the authz gate ran first (session, JSON content type, role).

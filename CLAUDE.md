@@ -26,7 +26,7 @@ use Google Meet or Jitsi, selected through configuration.
 ## Commands
 
 ```sh
-npm test                    # node --test "scripts/**/*.test.js" "api/**/*.test.js"
+npm test                    # node --test "scripts/**/*.test.js" "api/**/*.test.js" "tools/**/*.test.js"
 node scripts/scan-secrets.js  # scan the files that would be committed
 ```
 

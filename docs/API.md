@@ -46,6 +46,7 @@ appointment and consultation endpoints exist. The access rules are in
 | POST | `/appointments/:id/meeting` | `professional` of the appointment | Creates the video meeting of an appointment. See `docs/VIDEO.md`. |
 | POST | `/consultations` | `professional` | Creates a consultation for an appointment of the caller. |
 | GET | `/consultations/:id` | `professional`, `client`, `admin` | Reads one consultation. |
+| GET (WebSocket upgrade) | `/ws?appointment=<id>` | `professional` and `client` of the appointment | Live chat of one appointment. See the Chat section. |
 | GET | `/audit` | `auditor` | Lists audit entries of the caller's center. |
 
 Every route not listed here answers `403`. The role column says which roles can
@@ -390,6 +391,114 @@ Errors: `400 invalid_request` for a bad parameter or for `from` after `to`. `403
 forbidden` for any role other than `auditor`, and for an auditor without a center.
 `401 unauthenticated` without a live session.
 
+## Chat (WebSocket)
+
+Each appointment has one chat between its professional and its client. The chat
+runs on a WebSocket at `/ws`, and every message is stored in the `chat_messages`
+table. The chat exists only when sign-in is enabled, like the other routes.
+
+### GET /ws
+
+Open the chat with a WebSocket handshake. The browser sends the session cookie
+with it, so the client does not handle the token. Use `wss://` in production:
+
+```js
+const socket = new WebSocket('wss://clinic.example.test/ws?appointment=5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f');
+```
+
+Roles: the `professional` and the `client` of the appointment, in its center. An
+administrator of the center, an auditor, or a user of another center is refused,
+even though they may read the appointment in other routes.
+
+Refusals happen during the handshake, before the upgrade. The body has the error
+shape of the rest of the API.
+
+| Status | Code | Cause |
+|---|---|---|
+| 400 | `invalid_request` | The `appointment` parameter is missing or empty. |
+| 401 | `unauthenticated` | No live session. Nothing is audited. |
+| 403 | `forbidden` | The `Origin` header names another host than the `Host` header. |
+| 404 | `not_found` | The appointment does not exist, is in another center, or the caller does not take part in it. The body is the same in every case. |
+| 410 | `appointment_closed` | The appointment is not `scheduled`, so its chat is closed. |
+
+The `Origin` check stops a page on another site from opening the chat with the
+user's cookie. Behind Apache, keep the `Host` header (`ProxyPreserveHost On`), or
+every browser handshake is refused.
+
+### Frames
+
+Every frame is JSON text.
+
+The client sends a message:
+
+```json
+{"type":"message","body":"Synthetic text for the example"}
+```
+
+The server sends the recent history once, right after the handshake. It holds up
+to 50 messages of the appointment, oldest first:
+
+```json
+{"type":"history","items":[{"id":"0d3c1f52-6a7b-4c8d-9e0f-1a2b3c4d5e6f","appointmentId":"5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f","senderId":"u-ana","body":"Synthetic text","sentAt":"2026-12-02T10:05:00.123Z"}]}
+```
+
+The server sends each stored message to every open connection of the appointment,
+the sender included:
+
+```json
+{"type":"message","message":{"id":"0d3c1f52-6a7b-4c8d-9e0f-1a2b3c4d5e6f","appointmentId":"5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f","senderId":"u-ana","body":"Synthetic text","sentAt":"2026-12-02T10:05:00.123Z"}}
+```
+
+Errors go to the sender only:
+
+```json
+{"type":"error","error":{"code":"message_too_large","message":"The message body must be at most 2000 bytes of UTF-8."}}
+```
+
+| Error code | Meaning | Connection |
+|---|---|---|
+| `invalid_message` | Not JSON, not an object, another field or type, an empty body, or a binary frame. | Stays open. |
+| `message_too_large` | The body is over 2000 UTF-8 bytes. Nothing is stored or sent. | Stays open. |
+| `appointment_closed` | The appointment is no longer scheduled. | Closes with 4001. |
+| `session_ended` | The session was revoked or expired. | Closes with 4002. |
+| `access_lost` | The caller may no longer use this chat. | Closes with 4003. |
+| `server_error` | The message could not be processed. | Stays open. |
+
+### Ordering and reconnection
+
+The server stores and sends messages of one appointment in one order. `sentAt`
+increases from one message to the next. A client that reconnects gets the history
+again, so it sees the messages sent while it was away, when they are among the
+50 most recent.
+
+### Limits and closing
+
+| Limit | Value |
+|---|---|
+| Body | 2000 bytes of UTF-8 |
+| One frame | 16 KiB. A larger frame closes the connection with 1009. |
+| History on connect | 50 messages |
+| Checks of open connections | Every 30 seconds |
+
+The server checks the session on each message and on each check of open
+connections. Each of those checks counts as activity, so an open chat keeps the
+idle timer of the session running. The absolute limit still applies.
+
+| Close code | Meaning |
+|---|---|
+| 1001 | The server is shutting down. |
+| 1009 | The frame is larger than 16 KiB. |
+| 4001 | The appointment is closed. |
+| 4002 | The session ended or was revoked. |
+| 4003 | The caller lost access to the appointment. |
+
+### Retention
+
+`node api/src/chat/purge.js` deletes messages older than `CHAT_RETENTION_DAYS`
+days (default 90, from 1 to 3650). It needs `DATABASE_URL`, like the server. Run
+it from a timer. Each run writes one `chat.purge` entry. The command prints only
+the number of deleted messages. See `docs/AUDIT.md`.
+
 ## Error codes
 
 | HTTP status | Code | Meaning |
@@ -402,6 +511,7 @@ forbidden` for any role other than `auditor`, and for an auditor without a cente
 | 403 | `access_denied` | The verified email has no account in `users`. |
 | 403 | `forbidden` | The signed-in role or account may not use this resource, or the route has no rule. |
 | 404 | `not_found` | No route matches the path, or the record does not exist or is not readable by the caller. |
+| 410 | `appointment_closed` | The appointment is not `scheduled`, so its chat is closed. Only the chat handshake answers it. |
 | 413 | `payload_too_large` | The request body is larger than 100 KB. |
 | 415 | `unsupported_media_type` | A `POST`, `PUT`, or `PATCH` to a protected route was not sent as `application/json`. |
 | 429 | `rate_limited` | The client exceeded the rate limit. |
