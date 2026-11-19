@@ -1,0 +1,43 @@
+[Unit]
+Description=doctor7-onprem API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=doctor7
+Group=doctor7
+# Root-owned, mode 0600. systemd reads it before it drops privileges.
+EnvironmentFile=/etc/doctor7/api.env
+WorkingDirectory=/usr/lib/doctor7/api
+ExecStart=/usr/lib/doctor7/start-api.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+# Writable state (the files layer). Nothing else is writable.
+StateDirectory=doctor7
+StateDirectoryMode=0750
+UMask=0077
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

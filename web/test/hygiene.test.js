@@ -1,12 +1,37 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// The terms are built from parts so this file does not hold them as plain text.
-const FORBIDDEN = [['fire', 'base'], ['twi', 'lio'], ['doctor', '-7'], ['un', 'ad']].map((parts) => parts.join(''));
+// Vendor SDK names are generic and not sensitive, so they stay in plain text.
+const GENERIC_FORBIDDEN = ['firebase', 'twilio'];
 
 const SRC = join(import.meta.dirname, '..', 'src');
 const WEB = join(import.meta.dirname, '..');
+const ROOT = join(WEB, '..');
+
+// The sensitive terms are never stored in the repository. Like the secret
+// scanner, this reads the list from FORBIDDEN_WORDS_FILE, or else from
+// scripts/forbidden-words.local.txt (git ignores it).
+function loadListedWords() {
+  const fromEnv = (process.env.FORBIDDEN_WORDS_FILE || '').trim();
+  const candidates = [fromEnv === '' ? null : resolve(fromEnv), join(ROOT, 'scripts', 'forbidden-words.local.txt')];
+  const file = candidates.find((candidate) => candidate !== null && existsSync(candidate));
+  if (file === undefined) return [];
+  return readFileSync(file, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim().toLowerCase())
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
+}
+
+const LISTED = loadListedWords();
+const FORBIDDEN = [...GENERIC_FORBIDDEN, ...LISTED];
+
+if (LISTED.length === 0) {
+  console.warn(
+    'hygiene: no forbidden-word list configured, so only the generic terms are checked. ' +
+      'Set FORBIDDEN_WORDS_FILE or create scripts/forbidden-words.local.txt.'
+  );
+}
 
 function files(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -22,10 +47,20 @@ describe('web/src hygiene', () => {
     expect(sources.length).toBeGreaterThan(20);
   });
 
-  it.each(FORBIDDEN.map((term) => [term]))('does not mention a forbidden term (%#)', (term) => {
+  it.each(GENERIC_FORBIDDEN.map((term) => [term]))('does not mention the generic term %s', (term) => {
     const hits = sources.filter(({ text }) => text.toLowerCase().includes(term)).map(({ path }) => path);
     expect(hits).toEqual([]);
   });
+
+  // The title does not print the term, so a failure report cannot leak it.
+  if (LISTED.length === 0) {
+    it.skip('does not mention a listed term (no forbidden-word list configured)', () => {});
+  } else {
+    it.each(LISTED.map((term) => [term]))('does not mention a listed term (%#)', (term) => {
+      const hits = sources.filter(({ text }) => text.toLowerCase().includes(term)).map(({ path }) => path);
+      expect(hits).toEqual([]);
+    });
+  }
 
   it('has no external http or https address', () => {
     const hits = sources.filter(({ text }) => /https?:\/\//i.test(text)).map(({ path }) => path);

@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  remove | deconfigure)
+    # A site that stays enabled after its file is gone stops Apache from loading.
+    if command -v a2dissite >/dev/null 2>&1 && command -v a2query >/dev/null 2>&1; then
+      if a2query -s doctor7 >/dev/null 2>&1; then
+        a2dissite doctor7 >/dev/null || true
+        systemctl reload apache2 >/dev/null 2>&1 || true
+      fi
+    fi
+    ;;
+  upgrade | failed-upgrade)
+    ;;
+  *)
+    echo "prerm called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

@@ -1,0 +1,8 @@
+# doctor7-onprem Apache variables, read by doctor7.conf with Include.
+# Replace every value. The paths and names below are placeholders.
+# Apache refuses to start with a certificate path that does not exist.
+Define SERVER_NAME clinic.example.org
+Define JITSI_ORIGIN https://jitsi.example.org
+Define TLS_CERT_FILE /etc/doctor7/tls/fullchain.pem
+Define TLS_KEY_FILE /etc/doctor7/tls/privkey.pem
+Define API_UPSTREAM 127.0.0.1:3000

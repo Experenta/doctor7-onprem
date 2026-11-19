@@ -41,6 +41,12 @@ This runs `node --test "scripts/**/*.test.js" "api/**/*.test.js" "tools/**/*.tes
 which includes the secret scan of the repository, the API tests, and the
 simulator tests.
 
+The web tests run with Vitest and are not part of `npm test`. Run them with:
+
+```sh
+npm run test:web
+```
+
 To run the scanner by itself:
 
 ```sh
