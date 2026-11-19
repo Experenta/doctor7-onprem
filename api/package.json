@@ -1,0 +1,26 @@
+{
+  "name": "api",
+  "description": "doctor7-onprem API: Express over MariaDB, with SQL migrations and a parameterized data access layer.",
+  "private": true,
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "migrate": "node src/db/migrations.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.5",
+    "helmet": "^8.3.0",
+    "jose": "^6.2.18",
+    "mysql2": "^3.24.6",
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.3"
+  }
+}
