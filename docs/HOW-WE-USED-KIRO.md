@@ -25,7 +25,7 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## Tasks, contracts, and checks
 
-- 25 tasks were given to Kiro agents: K-01 to K-26 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task had a
+- 26 tasks were given to Kiro agents: K-01 to K-26 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task had a
   written contract with an objective, the files it may change, what is out of scope, an
   acceptance criterion, and a verification command. (Source: `KIRO-USO.md`, Tasks.)
 - Each task had its own branch and one commit. The project director checked the task
