@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { canAccess } from '../lib/access.js';
@@ -26,9 +27,10 @@ export function Shell() {
   return <Layout />;
 }
 
-// Shows a screen only to the roles listed for it in lib/access.js.
+// Shows a screen only to the roles listed for it in lib/access.js. The screen's
+// code loads inside the boundary, so the skeleton shows while it arrives.
 export function Screen({ id, children }) {
   const { user } = useAuth();
   if (!canAccess(user.role, id)) return <NoPermission />;
-  return children;
+  return <Suspense fallback={<Skeleton label="Loading this screen" />}>{children}</Suspense>;
 }

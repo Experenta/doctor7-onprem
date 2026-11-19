@@ -1,14 +1,20 @@
+import { lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { Screen, Shell } from './components/Guard.jsx';
-import Appointments from './pages/Appointments.jsx';
-import AppointmentPage from './pages/AppointmentPage.jsx';
-import Audit from './pages/Audit.jsx';
-import Consultation from './pages/Consultation.jsx';
-import Home from './pages/Home.jsx';
 import Login from './pages/Login.jsx';
-import NewAppointment from './pages/NewAppointment.jsx';
-import NewConsultation from './pages/NewConsultation.jsx';
 import { NoPermission } from './components/States.jsx';
+
+// Each screen loads when it is first shown. Login stays in the initial bundle,
+// because every visitor reaches it first. Screen renders its children inside a
+// Suspense boundary, and only after the role check, so a role that may not use a
+// screen never loads its code.
+const Home = lazy(() => import('./pages/Home.jsx'));
+const Appointments = lazy(() => import('./pages/Appointments.jsx'));
+const AppointmentPage = lazy(() => import('./pages/AppointmentPage.jsx'));
+const NewAppointment = lazy(() => import('./pages/NewAppointment.jsx'));
+const NewConsultation = lazy(() => import('./pages/NewConsultation.jsx'));
+const Consultation = lazy(() => import('./pages/Consultation.jsx'));
+const Audit = lazy(() => import('./pages/Audit.jsx'));
 
 export default function App() {
   return (

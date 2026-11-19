@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { loadMigrations, parseMigration } = require('../src/db/migrations');
 
 const migrations = loadMigrations();
@@ -39,15 +41,68 @@ test('the down section drops exactly the tables the up section creates', () => {
   }
 });
 
-test('CREATE statements are idempotent, and ALTER statements touch only audit_log', () => {
+test('CREATE statements are idempotent, and ALTER statements touch only the tables they may', () => {
   for (const migration of migrations) {
     for (const statement of migration.up) {
       if (statement.startsWith('CREATE')) {
         assert.match(statement, /^CREATE TABLE IF NOT EXISTS /);
+      } else if (migration.version === '0004_query_indexes') {
+        assert.match(statement, /^ALTER TABLE (appointments|audit_log|chat_messages)\n/, `${migration.version} alters another table`);
       } else {
         assert.match(statement, /^ALTER TABLE audit_log\n/, `${migration.version} alters another table`);
       }
     }
+  }
+});
+
+// The indexes that 0004 adds: name -> table and columns. Each one has a query in docs/PERFORMANCE.md.
+const QUERY_INDEXES = {
+  ix_appointments_center_professional_start: { table: 'appointments', columns: ['center_id', 'professional_id', 'starts_at'] },
+  ix_appointments_center_client_start: { table: 'appointments', columns: ['center_id', 'client_id', 'starts_at'] },
+  ix_audit_log_center_occurred: { table: 'audit_log', columns: ['center_id', 'occurred_at'] },
+  ix_chat_messages_sent: { table: 'chat_messages', columns: ['sent_at'] },
+};
+
+test('the index migration only adds and drops indexes, one ALTER TABLE per table', () => {
+  const indexes = migrations.find((m) => m.version === '0004_query_indexes');
+  assert.ok(indexes, '0004_query_indexes is missing');
+  for (const statement of [...indexes.up, ...indexes.down]) {
+    assert.match(statement, /^ALTER TABLE \w+\n/);
+    for (const line of statement.split('\n').slice(1)) {
+      assert.match(line.trim(), /^(ADD INDEX \w+ \([\w, ]+\)|DROP INDEX \w+),?$/, `unexpected line: ${line}`);
+    }
+  }
+  assert.doesNotMatch(indexes.up.join('\n') + indexes.down.join('\n'), /IF (NOT )?EXISTS/i);
+});
+
+test('the index migration adds exactly the agreed indexes, and its down direction reverts them', () => {
+  const indexes = migrations.find((m) => m.version === '0004_query_indexes');
+  const added = new Map();
+  for (const statement of indexes.up) {
+    const table = statement.match(/^ALTER TABLE (\w+)/)[1];
+    for (const [, name, columns] of statement.matchAll(/ADD INDEX (\w+) \(([^)]+)\)/g)) {
+      added.set(name, { table, columns: columns.split(', ') });
+    }
+  }
+  assert.deepEqual(added, new Map(Object.entries(QUERY_INDEXES)));
+
+  const dropped = new Map();
+  for (const statement of indexes.down) {
+    const table = statement.match(/^ALTER TABLE (\w+)/)[1];
+    for (const [, name] of statement.matchAll(/DROP INDEX (\w+)/g)) {
+      dropped.set(name, table);
+    }
+  }
+  assert.deepEqual(
+    [...dropped].sort(),
+    Object.entries(QUERY_INDEXES).map(([name, { table }]) => [name, table]).sort()
+  );
+});
+
+test('every index the migration adds is justified in docs/PERFORMANCE.md', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'PERFORMANCE.md'), 'utf8');
+  for (const name of Object.keys(QUERY_INDEXES)) {
+    assert.match(doc, new RegExp(`^\\|.*\`${name}\``, 'm'), `${name} has no row in docs/PERFORMANCE.md`);
   }
 });
 
