@@ -1,0 +1,37 @@
+# doctor7-onprem demo: forwards /idp/ to the mock identity provider.
+#
+# Demo only. Do not install this on a production server.
+#
+# The provider listens on 127.0.0.1:4010 (packaging/systemd/doctor7-mock-idp.service).
+# Apache removes the /idp prefix before it forwards, and the provider answers with
+# or without it. The public issuer is https://<host>/idp, so MOCK_IDP_PUBLIC_URL and
+# OIDC_ISSUER must be exactly that value.
+#
+# Needed modules: proxy, proxy_http, ssl.
+#
+# This file covers the /idp/ path only. On the demo host, add the ProxyPass and
+# ProxyPassReverse lines and the /idp/ Location block to the TLS virtual host that
+# serves /api. Do not copy the "/" block into that host. Replace the placeholder
+# certificate paths with the files of the demo host.
+
+<VirtualHost *:443>
+    ServerName demo.example.test
+
+    SSLEngine on
+    SSLProtocol -all +TLSv1.2 +TLSv1.3
+    SSLCertificateFile /path/to/fullchain.pem
+    SSLCertificateKeyFile /path/to/privkey.pem
+
+    ProxyRequests Off
+
+    # This host forwards /idp/ only. Every other path is refused.
+    <Location "/">
+        Require all denied
+    </Location>
+    <Location "/idp/">
+        Require all granted
+    </Location>
+
+    ProxyPass /idp/ http://127.0.0.1:4010/
+    ProxyPassReverse /idp/ http://127.0.0.1:4010/
+</VirtualHost>

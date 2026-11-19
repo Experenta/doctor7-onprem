@@ -152,8 +152,9 @@ node seed/generate.js --out <directory> [--now <ISO 8601 instant>]
 ```
 
 The generator writes the six files to `<directory>`. Write the output outside the
-repository and do not commit it. `--now` sets the run date. The default is the current
-time. The appointments are placed relative to the Bogota calendar date of `now`.
+repository, or to `seed/out/`, which git ignores. Do not commit it. `--now` sets the
+run date. The default is the current time. The appointments are placed relative to the
+Bogota calendar date of `now`.
 
 The seed contains these accounts, all in `demo-center`:
 

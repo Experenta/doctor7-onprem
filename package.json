@@ -9,7 +9,7 @@
     "web"
   ],
   "scripts": {
-    "test": "node --test \"scripts/**/*.test.js\" \"api/**/*.test.js\" \"tools/**/*.test.js\"",
+    "test": "node --test \"scripts/**/*.test.js\" \"api/**/*.test.js\" \"tools/**/*.test.js\" \"seed/**/*.test.js\" \"packaging/**/*.test.js\"",
     "test:web": "npm test --workspace=web"
   }
 }
