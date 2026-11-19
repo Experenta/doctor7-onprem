@@ -35,11 +35,22 @@ test('an unsigned meeting is the base URL plus a random room, with no token', as
   assert.equal(parsed.search, '');
 });
 
+test('room names are alphanumeric only, so the default Jitsi Apache rule accepts them', async () => {
+  const jitsi = provider({ baseUrl: 'https://jitsi.example.test' });
+  const urls = await Promise.all(Array.from({ length: 50 }, () => jitsi.createMeeting({ appointment: appointment(END) })));
+  for (const { url } of urls) {
+    const room = new URL(url).pathname.slice(1);
+    assert.match(room, /^[a-zA-Z0-9]+$/);
+    assert.match(room, /^doctor7[0-9a-f]{32}$/);
+  }
+});
+
 test('rooms are unique and keep a path in the base URL', async () => {
   const jitsi = provider({ baseUrl: 'https://example.test/jitsi' });
   const urls = await Promise.all(Array.from({ length: 50 }, () => jitsi.createMeeting({ appointment: appointment(END) })));
   assert.equal(new Set(urls.map((entry) => entry.url)).size, 50);
-  assert.ok(urls.every((entry) => entry.url.startsWith('https://example.test/jitsi/doctor7-')));
+  assert.ok(urls.every((entry) => entry.url.startsWith('https://example.test/jitsi/doctor7')));
+  assert.ok(urls.every((entry) => !entry.url.slice('https://example.test/jitsi/'.length).includes('-')));
 });
 
 test('a signed meeting carries an HS256 token for its room', async () => {

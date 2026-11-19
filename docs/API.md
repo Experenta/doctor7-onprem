@@ -347,7 +347,7 @@ Response `201` (first call) or `200` (the meeting already exists), with
 `Cache-Control: no-store`:
 
 ```json
-{"provider":"jitsi","url":"https://jitsi.example.test/doctor7-0f1e2d3c4b5a69788796a5b4c3d2e1f0"}
+{"provider":"jitsi","url":"https://jitsi.example.test/doctor70f1e2d3c4b5a69788796a5b4c3d2e1f0"}
 ```
 
 `provider` is the provider that really created the meeting. It is `jitsi` when
@@ -377,7 +377,7 @@ curl -i http://127.0.0.1:3000/appointments/5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f/
 Response `200`, with `Cache-Control: no-store`, the same body as the `POST`:
 
 ```json
-{"provider":"jitsi","url":"https://jitsi.example.test/doctor7-0f1e2d3c4b5a69788796a5b4c3d2e1f0"}
+{"provider":"jitsi","url":"https://jitsi.example.test/doctor70f1e2d3c4b5a69788796a5b4c3d2e1f0"}
 ```
 
 This is how the client enters the room that the professional started.

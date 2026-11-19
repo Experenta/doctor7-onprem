@@ -3,7 +3,11 @@
 const crypto = require('node:crypto');
 const { VideoProviderError } = require('./provider');
 
-const ROOM_PREFIX = 'doctor7-';
+// Room names hold letters and digits only. The default rule of the Jitsi Apache
+// virtual host (RewriteRule ^/([a-zA-Z0-9]+)$) rejects any other character, so a
+// hyphen in the name answers 404. Meetings stored with an older name keep working,
+// because a stored address is returned as it is.
+const ROOM_PREFIX = 'doctor7';
 const ROOM_RANDOM_BYTES = 16;
 const TOKEN_GRACE_SECONDS = 3600;
 

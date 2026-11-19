@@ -21,7 +21,7 @@ The demo instance is available until 2027-01-29.
 
 On the sign-in page, pick the account for the role you want
 to see: Professional, Client, Administrator, or Auditor. The demo identity provider
-does not check passwords. The demo embeds a self-hosted Jitsi server for video. A real
+does not check passwords. The demo places a self-hosted Jitsi room in the video panel. A real
 audio and video call between two participants has not been verified.
 
 The steps for reviewers are in `docs/SUBMISSION.md`, under "How to try it".

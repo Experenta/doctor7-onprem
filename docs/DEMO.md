@@ -250,13 +250,22 @@ a default value, so the page still loads.
 The site is `<host>` and Jitsi is `meet.<host>`. A different domain changes only the
 names in this section and in `web.vars.conf`.
 
+### Room names
+
+Jitsi's Apache virtual host only accepts letters and digits in room names by default; keep room names alphanumeric or widen the RewriteRule.
+
+The API makes room names of the form `doctor7` followed by 32 hexadecimal characters.
+Meetings stored before K-29 hold names with a hyphen. The API returns those stored
+addresses unchanged.
+
 ### Verification status
 
 Verified on the Debian 13 virtual machine:
 
-- The meeting room page loads over HTTPS.
+- The entry page of the meeting room, with its «Join meeting» button, was checked over HTTPS.
 - Apache, prosody, jicofo, and jitsi-videobridge2 are active.
-- The API creates the meeting (HTTP 201) and embeds it in an `iframe`.
+- The API creates the meeting (HTTP 201). The page places its address in an `iframe`,
+  and the content of that iframe was not checked on the VM.
 
 Not verified: a real audio and video call between two participants. The test browser
 had no camera, so the call with real audio and video was not verified.
