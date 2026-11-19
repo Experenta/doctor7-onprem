@@ -158,8 +158,13 @@ test('the demo script adds up to 180 seconds or less, and its own numbers agree'
 
 // ---- The task count and the specification folders of the Kiro documents ----
 
-const TASK_COUNT = 24;
-const TASK_PHRASE = `${TASK_COUNT} numbered tasks, K-01 to K-24, plus K-19b`;
+const TASK_COUNT = 23;
+const TASK_SENTENCE =
+  '23 tasks were given to Kiro agents: K-01 to K-24 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19.';
+const SPEC_SENTENCE =
+  'From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11 and K-19b, which have none.';
+// Phrases that the documents must no longer contain.
+const OLD_PHRASES = ['numbered tasks', 'each task began by writing a specification', 'each task also began with a specification'];
 const KIRO_DOCS = [
   { file: 'docs/HOW-WE-USED-KIRO.md', list: /holds specifications for ([^.]+)\./ },
   { file: 'docs/SUBMISSION.md', list: /specifications in `\.kiro\/specs\/` are for ([^.]+)\./ },
@@ -174,12 +179,16 @@ function specFolders() {
     .sort();
 }
 
-test('the Kiro documents state the task count, and no other count of numbered tasks', () => {
+test('the Kiro documents state the task count and the exceptions, and no old phrase', () => {
   for (const { file } of KIRO_DOCS) {
     const text = read(file);
-    assert.ok(text.includes(TASK_PHRASE), `${file} must state "${TASK_PHRASE}"`);
-    const counts = [...text.matchAll(/(\d+) numbered tasks/g)].map((m) => Number(m[1]));
-    assert.deepEqual(counts, [TASK_COUNT], `${file} states another count of numbered tasks`);
+    assert.ok(text.includes(TASK_SENTENCE), `${file} must state "${TASK_SENTENCE}"`);
+    assert.ok(text.includes(SPEC_SENTENCE), `${file} must state "${SPEC_SENTENCE}"`);
+    const counts = [...text.matchAll(/(\d+) tasks were given to Kiro agents/g)].map((m) => Number(m[1]));
+    assert.deepEqual(counts, [TASK_COUNT], `${file} states another task count`);
+    for (const old of OLD_PHRASES) {
+      assert.ok(!text.includes(old), `${file} still states the old phrase "${old}"`);
+    }
   }
 });
 

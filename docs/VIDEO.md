@@ -103,8 +103,8 @@ meeting in Jitsi. These count as a failure:
 | HTTP 429, or an error status `RESOURCE_EXHAUSTED` | `meet_quota` |
 | Any other HTTP error (4xx or 5xx), network error, invalid answer, a meeting address that is not on `meet.google.com`, or a delegation that Google refuses | `meet_error` |
 
-The decision is made for each new meeting. Nothing about the failover is remembered,
-so the next new meeting tries Meet again. A stored meeting is never moved: a repeated
+The decision to fail over is made for each new meeting, and it is not remembered. The next new meeting tries Meet again. The meeting that is created is stored per
+appointment in the `meetings` table, with the provider that really created it. A stored meeting is never moved: a repeated
 request returns it as it is, and the response has `provider: "jitsi"` when Jitsi
 created it, so the client knows where the meeting is.
 

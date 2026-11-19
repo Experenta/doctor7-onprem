@@ -25,7 +25,7 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## Tasks, contracts, and checks
 
-- The work was split into 24 numbered tasks, K-01 to K-24, plus K-19b. Each task had a
+- 23 tasks were given to Kiro agents: K-01 to K-24 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task had a
   written contract with an objective, the files it may change, what is out of scope, an
   acceptance criterion, and a verification command. (Source: `KIRO-USO.md`, Tasks.)
 - Each task had its own branch and one commit. The project director checked the task
@@ -37,7 +37,7 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## Specifications
 
-- From K-06 on, each task began by writing a specification in `.kiro/specs/<task>/`. A
+- From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11 and K-19b, which have none. A
   specification has three files: `requirements.md`, `design.md`, and `tasks.md`. The task
   was then implemented against that specification. (Source: `KIRO-USO.md`, Specifications;
   folder `.kiro/specs/`.)
