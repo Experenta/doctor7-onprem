@@ -18,5 +18,8 @@
     "helmet": "^8.3.0",
     "jose": "^6.2.18",
     "mysql2": "^3.24.6"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.3"
   }
 }
