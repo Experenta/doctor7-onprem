@@ -78,4 +78,24 @@ describe('Shell', () => {
     expect(container.querySelectorAll('.user-chip')).toHaveLength(1);
     expect(container.querySelectorAll('.brand')).toHaveLength(1);
   });
+
+  it('gives the new-appointment link the short label "New" for the bottom bar, and keeps its full name', async () => {
+    await shell('professional');
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const link = within(nav).getByRole('link', { name: 'New appointment' });
+    expect(link).toHaveAttribute('href', '/appointments/new');
+    expect(link).toHaveAttribute('data-short', 'New');
+    expect(link).toHaveAttribute('aria-label', 'New appointment');
+    expect(link).toHaveTextContent(/^New appointment$/);
+  });
+
+  it('gives the other destinations their plain label, without a short label', async () => {
+    await shell('professional');
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    for (const name of ['Home', 'Appointments']) {
+      const link = within(nav).getByRole('link', { name });
+      expect(link).not.toHaveAttribute('data-short');
+      expect(link).not.toHaveAttribute('aria-label');
+    }
+  });
 });

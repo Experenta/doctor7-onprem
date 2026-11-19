@@ -11,10 +11,13 @@ import { formatDateTime } from '../lib/format.js';
 import { useLoad } from '../lib/useLoad.js';
 
 function Participant({ id, tone }) {
+  const { user } = useAuth();
+  // The signed-in person is shown by name. Everyone else keeps the identifier.
+  const text = id === user.id ? user.displayName : id;
   return (
     <span className="person">
-      <Avatar name={id} size="sm" tone={tone} />
-      <span className="person-id">{id}</span>
+      <Avatar name={text} size="sm" tone={tone} />
+      <span className="person-id">{text}</span>
     </span>
   );
 }

@@ -478,3 +478,25 @@ describe('fonts', () => {
     expect(files.filter((path) => /\.(png|jpe?g|gif|webp|svg|ico|avif)$/i.test(path))).toEqual([]);
   });
 });
+
+
+describe('screens of K-32', () => {
+  it('shows the short label of the new appointment below 960px, and the full label from 960px', () => {
+    expect(css).toMatch(/@media \(max-width: 959px\) \{\s*\.side-link\[data-short\] > span/);
+    expect(css).toMatch(/\.side-link\[data-short\]::after \{\s*content: attr\(data-short\)/);
+    expect(rulesFor('.side-link[data-short] > span')[0].body).toMatch(/display:\s*none/);
+  });
+
+  it('keeps each time of the list on one line', () => {
+    expect(rulesFor('.appt-table .appt-time')[0].body).toMatch(/white-space:\s*nowrap/);
+    expect(rulesFor('.appt-table .cell-end')[0].body).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it('truncates a long identifier in the list with an ellipsis, and keeps the page from widening', () => {
+    const body = rulesFor('.appt-table .person-id')[0].body;
+    expect(body).toMatch(/text-overflow:\s*ellipsis/);
+    expect(body).toMatch(/overflow:\s*hidden/);
+    expect(body).toMatch(/white-space:\s*nowrap/);
+    expect(body).toMatch(/max-width:\s*8rem/);
+  });
+});

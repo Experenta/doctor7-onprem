@@ -221,6 +221,16 @@ a:hover {
   background: var(--color-turquoise-500);
 }
 
+/* A destination with a short label shows it in the bottom bar. The sidebar keeps the full label. */
+@media (max-width: 959px) {
+  .side-link[data-short] > span {
+    display: none;
+  }
+  .side-link[data-short]::after {
+    content: attr(data-short);
+  }
+}
+
 .user-chip {
   display: flex;
   align-items: center;
@@ -1296,6 +1306,18 @@ a:hover {
 }
 .person-id {
   min-width: 0;
+}
+/* The list keeps each time on one line. A long identifier ends with an ellipsis; its full
+   value is in the title attribute. */
+.appt-table .appt-time,
+.appt-table .cell-end {
+  white-space: nowrap;
+}
+.appt-table .person-id {
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .table .cell-actions {
   text-align: right;

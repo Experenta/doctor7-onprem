@@ -109,7 +109,7 @@ p{margin:0 0 1rem;max-width:70ch}
 .notice p{margin:0}
 .notice strong{color:var(--magenta-800)}
 .accounts{list-style:none;margin:0 0 1.25rem;padding:0;display:grid;gap:.875rem;grid-template-columns:minmax(0,1fr)}
-.account{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:.875rem;row-gap:.125rem;align-items:center;padding:1rem;border:1px solid var(--line);border-radius:16px;background:var(--white);box-shadow:var(--shadow);transition:box-shadow var(--motion)}
+.account{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:.875rem;row-gap:.125rem;align-items:start;align-content:start;padding:1rem;border:1px solid var(--line);border-radius:16px;background:var(--white);box-shadow:var(--shadow);transition:box-shadow var(--motion)}
 .account:hover{box-shadow:var(--shadow-raised)}
 .avatar{grid-row:1 / span 2;display:grid;place-items:center;width:3rem;height:3rem;border-radius:50%;background:var(--purple-700);color:var(--white);font-size:1rem;font-weight:800;letter-spacing:.02em}
 .avatar-client{background:var(--turquoise-500);color:var(--on-turquoise)}
@@ -117,7 +117,7 @@ p{margin:0 0 1rem;max-width:70ch}
 .avatar-auditor{background:var(--purple-500)}
 .avatar-none{background:var(--purple-100);color:var(--ink)}
 .account-name{margin:0;font-weight:800;overflow-wrap:anywhere}
-.account-meta{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;margin:0 0 .25rem;color:var(--muted);font-size:.9375rem;overflow-wrap:anywhere}
+.account-meta{display:grid;justify-items:start;gap:.25rem;margin:0 0 .25rem;color:var(--muted);font-size:.9375rem;overflow-wrap:anywhere}
 .role{display:inline-block;padding:0 .625rem;border-radius:999px;background:var(--purple-100);color:var(--purple-700);font-size:.875rem;font-weight:700;line-height:1.5}
 .role-none{background:var(--line);color:var(--ink)}
 button{grid-column:1 / -1;display:block;width:100%;min-height:44px;margin-top:.5rem;padding:.625rem 1rem;border:1px solid var(--purple-700);border-radius:12px;background:var(--purple-700);color:var(--white);font:inherit;font-weight:700;cursor:pointer;transition:background-color var(--motion),box-shadow var(--motion)}

@@ -351,3 +351,27 @@ test('the page does not mention a scheduled reset, in the visible text or in the
   const { html } = await loadPage();
   assert.doesNotMatch(html, /reset/i);
 });
+
+
+// ---------- The account cards (K-32) ----------
+
+test('every account card has the same header: avatar, name, then the role chip and the e-mail address', async () => {
+  const { html } = await loadPage();
+  const cards = [...html.matchAll(/<li class="account">([\s\S]*?)<\/li>/g)].map(([, card]) => card);
+  assert.equal(cards.length, 6, 'one card for each synthetic account');
+  for (const card of cards) {
+    assert.match(
+      card,
+      /^<span class="avatar avatar-[a-z]+" aria-hidden="true">[A-Z0-9?]+<\/span><p class="account-name">[^<]+<\/p><p class="account-meta"><span class="role[^"]*">[^<]+<\/span> <span>[^<]+<\/span><\/p><button /,
+    );
+  }
+});
+
+test('the header of each card starts at the top, and the role chip has a line of its own', async () => {
+  const { html } = await loadPage();
+  const css = styleOf(html);
+  const card = bodiesOf(css, '.account')[0];
+  assert.match(card, /align-items:start/, 'the items start at the top, not in the middle of a stretched row');
+  assert.match(card, /align-content:start/, 'the rows of a card do not stretch with a taller card');
+  assert.match(bodiesOf(css, '.account-meta')[0], /display:grid/, 'the chip and the e-mail address take one line each');
+});

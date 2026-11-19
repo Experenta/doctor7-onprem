@@ -28,11 +28,25 @@ const VIEWS = [
 ];
 const COLUMNS = 6;
 
+// The signed-in person is shown by name. Everyone else keeps the identifier.
+function useShownName(id) {
+  const { user } = useAuth();
+  return id === user.id ? user.displayName : id;
+}
+
+// Renders the name of the signed-in person, or the identifier of anyone else.
+function ShownName({ id }) {
+  return useShownName(id);
+}
+
 function Person({ id }) {
+  const text = useShownName(id);
   return (
     <span className="person">
-      <Avatar name={id} size="sm" />
-      <span className="person-id">{id}</span>
+      <Avatar name={text} size="sm" />
+      <span className="person-id" title={text}>
+        {text}
+      </span>
     </span>
   );
 }
@@ -164,7 +178,9 @@ function WeekView({ items, todayKey }) {
                       <Link className="week-item" to={`/appointments/${item.id}`}>
                         <span className={`status-dot status-dot-${item.status}`} aria-hidden="true" />
                         <span className="week-item-time">{formatTime(item.startsAt)}</span>
-                        <span className="week-item-name">{item.clientId}</span>
+                        <span className="week-item-name">
+                          <ShownName id={item.clientId} />
+                        </span>
                         <span className="sr-only">, {statusLabel(item.status)}</span>
                       </Link>
                     </li>

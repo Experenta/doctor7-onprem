@@ -60,9 +60,9 @@ describe('Appointments list', () => {
     const table = await screen.findByRole('table');
     const row = bodyRows(table)[0];
     expect(within(row).getByText('3:00 PM')).toBeInTheDocument();
-    expect(within(row).getByText('AN')).toBeInTheDocument();
+    expect(within(row).getByText('AR')).toBeInTheDocument();
     expect(within(row).getByText('LU')).toBeInTheDocument();
-    expect(within(row).getByText('u-ana')).toBeInTheDocument();
+    expect(within(row).getByText('Ana Rivera')).toBeInTheDocument();
     expect(within(row).getByText('Scheduled')).toBeInTheDocument();
     const quick = within(row).getByRole('link', { name: /^Open the appointment at 3:00\sPM$/ });
     expect(quick).toHaveAttribute('href', '/appointments/a-today');
@@ -219,5 +219,36 @@ describe('Appointments week view', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Closed/ }));
     expect(within(columns()[2]).queryByRole('link')).not.toBeInTheDocument();
     expect(within(columns()[1]).getByRole('link')).toHaveTextContent('Completed');
+  });
+});
+
+
+describe('Names and identifiers in the list (K-32)', () => {
+  it('shows the signed-in professional by name, and keeps the client identifier with its full value', async () => {
+    open();
+    const row = bodyRows(await screen.findByRole('table'))[0];
+    expect(within(row).getByText('Ana Rivera')).toHaveAttribute('title', 'Ana Rivera');
+    expect(within(row).queryByText('u-ana')).not.toBeInTheDocument();
+    expect(within(row).getByText('u-luis')).toHaveAttribute('title', 'u-luis');
+  });
+
+  it('shows the signed-in client by name in the client column', async () => {
+    open(ITEMS, 'client');
+    const row = bodyRows(await screen.findByRole('table'))[0];
+    expect(within(row).getByText('Luis Mora')).toBeInTheDocument();
+    expect(within(row).getByText('u-ana')).toHaveAttribute('title', 'u-ana');
+  });
+
+  it('gives a long identifier its full value in title', async () => {
+    const longId = `u-${'x'.repeat(90)}`;
+    open([at('a-long', '2026-12-03T15:00:00.000Z', 'scheduled', { clientId: longId })]);
+    const row = bodyRows(await screen.findByRole('table'))[0];
+    expect(within(row).getByText(longId)).toHaveAttribute('title', longId);
+  });
+
+  it('shows the signed-in client by name in the week view', async () => {
+    open(ITEMS, 'client');
+    await userEvent.click(await screen.findByRole('button', { name: 'Week' }));
+    expect(document.querySelector('.week-item-name')).toHaveTextContent('Luis Mora');
   });
 });
