@@ -5,14 +5,14 @@ const { ApiError } = require('../http/errors');
 const { can } = require('../authz/policy');
 const { requestContext } = require('../audit/entry');
 const { readDenialReason } = require('../care/router');
-
-const ID_MAX_LENGTH = 64;
+const { check, validateRequest } = require('../security/validate');
+const { idSchema, noQuery, emptyBody } = require('../security/schemas');
 
 const forbidden = () => new ApiError(403, 'forbidden', 'This account may not use this resource.');
 const notFound = () => new ApiError(404, 'not_found', 'Resource not found.');
 
 function isId(value) {
-  return typeof value === 'string' && value.length > 0 && Array.from(value).length <= ID_MAX_LENGTH;
+  return check(idSchema, value, 'id').ok;
 }
 
 function appointmentResource(appointment) {
@@ -42,13 +42,11 @@ function createVideoRouter({ store, audit, service, logger = console }) {
     return error;
   }
 
-  router.post('/appointments/:id/meeting', async (req, res) => {
+  // The provider comes from the configuration only. A client cannot choose it,
+  // so the body takes no fields.
+  router.post('/appointments/:id/meeting', validateRequest({ query: noQuery, body: emptyBody }), async (req, res) => {
     const { user } = req.auth;
 
-    // The provider comes from the configuration only. A client cannot choose it.
-    if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
-      throw new ApiError(400, 'invalid_request', 'This request takes no body fields.');
-    }
     if (!isId(req.params.id)) {
       throw await refuse(req, { reason: 'invalid_id' }, notFound());
     }
