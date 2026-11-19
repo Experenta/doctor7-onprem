@@ -38,14 +38,32 @@ npm test
 ```
 
 This runs `node --test "scripts/**/*.test.js" "api/**/*.test.js" "tools/**/*.test.js"`,
-which includes the secret and forbidden-word scan of the repository, the API
-tests, and the simulator tests.
+which includes the secret scan of the repository, the API tests, and the
+simulator tests.
 
 To run the scanner by itself:
 
 ```sh
 node scripts/scan-secrets.js
 ```
+
+### Forbidden-word list
+
+The scanner checks key patterns in every file that would enter a commit. It
+also checks forbidden words, but the list of words is kept outside the
+repository. The scanner reads the list from the first of these:
+
+1. The file named by the `FORBIDDEN_WORDS_FILE` environment variable. A relative
+   path is resolved from the directory where the scanner runs.
+2. `scripts/forbidden-words.local.txt`, which git ignores.
+
+The file has one term per line. Matching ignores case. Lines that start with `#`
+are comments. `scripts/forbidden-words.example.txt` shows the format with
+invented terms.
+
+With neither file present, the scanner checks key patterns only and prints one
+warning line. The documentation check in the test suite is skipped in that case.
+The scanner never scans the list files.
 
 ## Contributing
 

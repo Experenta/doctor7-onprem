@@ -20,8 +20,12 @@ use Google Meet or Jitsi, selected through configuration.
    Target Debian with Apache and MariaDB.
 4. **English only.** All public text (code comments, docs, commit messages,
    UI strings in the repository) is in English.
-5. **Forbidden words.** The list in `scripts/forbidden-words.txt` must not appear
-   in any committed file. The scanner enforces this.
+5. **Forbidden words.** The list of forbidden words lives outside the repository.
+   The scanner reads it from the file named by `FORBIDDEN_WORDS_FILE`, or else
+   from `scripts/forbidden-words.local.txt`, which git ignores. Never copy its
+   terms, and never open or print that list. The repository holds only
+   `scripts/forbidden-words.example.txt`, which has invented terms. The scanner
+   never scans the list files, and it enforces the rule for the other files.
 
 ## Commands
 
