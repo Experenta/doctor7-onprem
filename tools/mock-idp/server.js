@@ -368,7 +368,7 @@ button:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
 <main class="wrap">
 <h1>Sign in to the doctor7 demo</h1>
 <div class="notice" role="note">
-<p><strong>Demonstration only.</strong> These are synthetic demonstration accounts. Their data is invented and resets regularly. Do not enter real personal information.</p>
+<p><strong>Demonstration only.</strong> These are synthetic demonstration accounts. Their data is invented. Do not enter real personal information.</p>
 </div>
 <p>Choose an account to sign in. Each account shows its role in the system.</p>
 <form method="post" action="${action}">

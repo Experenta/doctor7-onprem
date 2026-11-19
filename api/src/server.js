@@ -42,6 +42,7 @@ function createServer({
     careStore,
     auditStore,
     video: { config: config.video },
+    security: config.security,
     logger,
   });
   const server = http.createServer(app);

@@ -73,7 +73,7 @@ site and it does not create a certificate.
 | Variable | Meaning |
 |---|---|
 | `SERVER_NAME` | Host name of the site. It is also the WebSocket host in the content policy. |
-| `JITSI_ORIGIN` | Origin of the Jitsi server, such as `https://jitsi.clinic.example`. It goes into `frame-src` and into the camera and microphone permissions. Without Jitsi, use the site origin. |
+| `JITSI_ORIGIN` | Origin of the Jitsi server, such as `https://meet.demo.example.test`. It is not the origin of the site: the `frame-src` policy checks the Jitsi iframe against it, so an iframe from any other origin is blocked. It also goes into the camera and microphone permissions. Required even when Jitsi is not used. `docs/DEMO.md` describes the Jitsi node. |
 | `TLS_CERT_FILE`, `TLS_KEY_FILE` | Certificate chain and private key. The certificate is managed outside the packages. |
 | `API_UPSTREAM` | Host and port of the API. |
 
@@ -81,16 +81,19 @@ What the virtual host does:
 
 - `/api/` goes to the API with the prefix removed: `/api/auth/me` reaches the API
   as `/auth/me`. `/ws` goes to the API without a prefix.
-- The API sets cookies with `Path=/auth` (sign-in attempt) and `Path=/` (session).
-  `ProxyPassReverseCookiePath /auth /api/auth` and
-  `ProxyPassReverseCookiePath / /api/` map them to the public paths. Without them
-  the browser does not send the sign-in cookie to `/api/auth/callback`, and sign-in
-  fails. Keep the two lines in this order.
+- The API sets the sign-in cookie with `Path=/auth` and the session cookie with
+  `Path=/`. `ProxyPassReverseCookiePath /auth /api/auth` maps the sign-in cookie to
+  the public path, so the browser sends it back to `/api/auth/callback`. Without
+  that rule, sign-in fails. The session cookie keeps `Path=/`, so the browser also
+  sends it to `/ws`. Do not add `ProxyPassReverseCookiePath / /api/`. It hides the
+  session cookie from `/ws`, and the chat then fails with 401 and "chat could not
+  stay connected".
 - HTML responses carry a `Content-Security-Policy` that allows only the site, the
   WebSocket host and the Jitsi origin, with no inline script or style. Every
-  response carries HSTS, `X-Content-Type-Options`, `Referrer-Policy` and
-  `Permissions-Policy`.
+  response carries HSTS with `includeSubDomains`, `X-Content-Type-Options`,
+  `Referrer-Policy`, `Permissions-Policy` and `Cross-Origin-Opener-Policy`.
 - A path without a file gets `index.html`, so client-side routes work on reload.
+  `/api`, `/ws` and `/idp` are excluded from that rule.
 
 ## Settings
 
@@ -112,6 +115,17 @@ form `NAME=value`. A value with spaces or JSON goes in single quotes.
 | `TRUST_PROXY` | No | Number of reverse proxies in front of the API, from 0 to 10. Default 0. Use 1 behind Apache. |
 | `RATE_LIMIT_WINDOW_MS` | No | Length of the rate-limit window, from 1 to 86400000. Default 60000. |
 | `RATE_LIMIT_MAX` | No | Requests allowed per client in one window, from 1 to 1000000. Default 120. |
+
+### Security
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `ALLOWED_ORIGINS` | No | Comma-separated origins that may send state-changing requests, such as `https://demo.example.test`. Each one is https, or http on localhost, with no path. Default: the origin of `OIDC_REDIRECT_URI`. |
+| `NODE_ENV` | No | With `production`, the server refuses to start unless `OIDC_ISSUER`, `OIDC_CLIENT_ID`, and `OIDC_REDIRECT_URI` are set. Sign-in is required in production. |
+| `RATE_LIMIT_LOGIN_WINDOW_MS` | No | Length of the sign-in limit window, from 1 to 86400000. Default 900000 (15 minutes). |
+| `RATE_LIMIT_LOGIN_MAX` | No | Sign-in requests (`/auth/login` and `/auth/callback`) allowed per client address in one window, from 1 to 1000000. Default 20. |
+| `RATE_LIMIT_WRITE_WINDOW_MS` | No | Length of the write limit window, from 1 to 86400000. Default 60000. |
+| `RATE_LIMIT_WRITE_MAX` | No | POST, PUT, and PATCH requests allowed per signed-in user in one window, from 1 to 1000000. Default 60. |
 
 ### Sign-in
 
@@ -311,6 +325,10 @@ describes the whole demo.
   is missing.
 - The install does not enable or start the unit. On the demo host, run
   `systemctl enable --now doctor7-mock-idp.service`.
+- On the demo host, the `/idp/` lines of `idp-demo.conf.example` go into the TLS
+  virtual host of the site, as `docs/DEMO.md` describes. The site's virtual host
+  excludes `/idp` from client routing, so those requests reach the provider and not
+  `index.html`.
 - `apt-get remove` stops and disables the unit and keeps the settings file.
   `apt-get purge` removes `/etc/doctor7/idp-demo.env`, and removes `/etc/doctor7`
   only when it is empty. It keeps the `doctor7-idp` user and every other file.
