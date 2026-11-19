@@ -9,6 +9,6 @@
     "web"
   ],
   "scripts": {
-    "test": "node --test \"scripts/**/*.test.js\" \"api/**/*.test.js\""
+    "test": "node --test \"scripts/**/*.test.js\" \"api/**/*.test.js\" \"tools/mock-idp/**/*.test.js\""
   }
 }

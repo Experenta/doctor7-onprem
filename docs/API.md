@@ -3,8 +3,9 @@
 This document lists every HTTP endpoint of the API, with its method, path,
 allowed roles, and an example. Clients and the front end depend on it.
 
-Status: skeleton. The two probe endpoints and the sign-in endpoints exist. Later
-tasks add the domain endpoints and fill in the allowed roles for them.
+Status: skeleton. The two probe endpoints, the sign-in endpoints, and the
+appointment and consultation endpoints exist. The access rules are in
+`docs/AUTHORIZATION.md`.
 
 ## Conventions
 
@@ -39,7 +40,16 @@ tasks add the domain endpoints and fill in the allowed roles for them.
 | GET | `/auth/callback` | Public | Finishes sign-in. Opens a session and redirects. |
 | POST | `/auth/logout` | Public (acts on the caller's own session) | Ends the current session, or all sessions of the user. |
 | GET | `/auth/me` | Any signed-in role | Returns the signed-in user. |
+| GET | `/appointments` | `professional`, `client`, `admin` | Lists the appointments the caller may read. |
+| GET | `/appointments/:id` | `professional`, `client`, `admin` | Reads one appointment. |
+| POST | `/appointments` | `professional`, `admin` | Creates an appointment in the caller's center. |
+| POST | `/consultations` | `professional` | Creates a consultation for an appointment of the caller. |
+| GET | `/consultations/:id` | `professional`, `client`, `admin` | Reads one consultation. |
 
+Every route not listed here answers `403`. The role column says which roles can
+reach the route. The record itself is checked as well: a professional and a
+client see only appointments they take part in, and nobody sees another center.
+See `docs/AUTHORIZATION.md`.
 ### GET /healthz
 
 Request:
@@ -202,18 +212,106 @@ users on a login page and signs tokens with a key created at start. It is for
 development and tests only. Its settings are `MOCK_IDP_PORT`,
 `MOCK_IDP_CLIENT_ID`, and `MOCK_IDP_REDIRECT_URIS`.
 
+## Appointments and consultations
+
+These routes need a signed-in session. Without one they answer `401`. They are
+only mounted when sign-in is enabled. `POST` bodies must be sent with
+`Content-Type: application/json`, otherwise the answer is `415`. Timestamps in
+requests must be UTC, such as `2026-12-02T10:00:00.000Z`.
+
+Appointment object:
+
+```json
+{
+  "id": "5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f",
+  "centerId": "center-1",
+  "professionalId": "u-ana",
+  "clientId": "u-luis",
+  "startsAt": "2026-12-02T10:00:00.000Z",
+  "endsAt": "2026-12-02T10:50:00.000Z",
+  "status": "scheduled",
+  "createdAt": "2026-11-19T03:26:00.123Z"
+}
+```
+
+### GET /appointments
+
+Roles: `professional`, `client`, `admin`. Supports `limit` and `offset`. A
+professional gets the appointments where they are the professional, a client the
+ones where they are the client, and an admin all of the center. Response `200`:
+`{"items":[<appointment>, ...]}`, ordered by `startsAt`. Errors: `400
+invalid_request` for a bad `limit` or `offset`, `403` for `auditor` and for a
+user without a center.
+
+### GET /appointments/:id
+
+Roles: `professional`, `client`, `admin`. Response `200` with the appointment.
+`404 not_found` when the id does not exist. `403 forbidden` when the caller may
+not read it, for example another center or an appointment of another
+professional.
+
+### POST /appointments
+
+Roles: `professional` (only for themselves) and `admin`. The center is always the
+caller's center and cannot be sent.
+
+```sh
+curl -i -X POST http://127.0.0.1:3000/appointments \
+  -H 'Content-Type: application/json' \
+  -b 'd7_session=<token>' \
+  -d '{"professionalId":"u-ana","clientId":"u-luis","startsAt":"2026-12-02T10:00:00.000Z","endsAt":"2026-12-02T10:50:00.000Z"}'
+```
+
+Response `201` with the appointment, with `status` set to `scheduled`. Errors:
+`400 invalid_request` for a missing, unknown, or malformed field or when `endsAt`
+is not after `startsAt`. `403 forbidden` when the caller may not create it, or
+when `professionalId` or `clientId` is not a user of the caller's center with the
+role `professional` or `client`.
+
+### POST /consultations
+
+Roles: `professional`, for an appointment where they are the professional.
+
+```sh
+curl -i -X POST http://127.0.0.1:3000/consultations \
+  -H 'Content-Type: application/json' \
+  -b 'd7_session=<token>' \
+  -d '{"appointmentId":"5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f","body":{"note":"synthetic example"}}'
+```
+
+`body` is a JSON object. Response `201`:
+
+```json
+{
+  "id": "0d3c1f52-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+  "appointmentId": "5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f",
+  "body": {"note": "synthetic example"},
+  "createdAt": "2026-12-02T11:00:00.000Z"
+}
+```
+
+Errors: `400 invalid_request`, `403 forbidden`, `404 not_found` when the
+appointment does not exist.
+
+### GET /consultations/:id
+
+Roles: `professional` and `client` of the appointment, and `admin` of its center.
+Response `200` with the consultation. Errors: `403 forbidden`, `404 not_found`.
+
 ## Error codes
 
 | HTTP status | Code | Meaning |
 |---|---|---|
 | 400 | `invalid_json` | The request body is not valid JSON. |
+| 400 | `invalid_request` | A field or query parameter is missing, unknown, or malformed. |
 | 400 | `invalid_login_request` | The sign-in callback failed a state or browser check. |
 | 401 | `unauthenticated` | A signed-in session is required and none is live. |
 | 401 | `login_failed` | Sign-in did not complete. See `/auth/callback`. |
 | 403 | `access_denied` | The verified email has no account in `users`. |
-| 403 | `forbidden` | The signed-in role may not use this resource. |
-| 404 | `not_found` | No route matches the path. |
+| 403 | `forbidden` | The signed-in role or account may not use this resource, or the route has no rule. |
+| 404 | `not_found` | No route matches the path, or the record does not exist. |
 | 413 | `payload_too_large` | The request body is larger than 100 KB. |
+| 415 | `unsupported_media_type` | A `POST`, `PUT`, or `PATCH` to a protected route was not sent as `application/json`. |
 | 429 | `rate_limited` | The client exceeded the rate limit. |
 | 500 | `internal_error` | An unexpected failure. The details are in the server log only. |
 | 503 | `database_unavailable` | The database did not answer the readiness check. |
