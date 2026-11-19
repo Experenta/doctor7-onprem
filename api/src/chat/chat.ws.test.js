@@ -73,6 +73,23 @@ test('a handshake without a live session is refused with 401 and writes no audit
     assert.equal(entriesFor(ctx.auditStore, 'chat.connect').length, 0);
   }));
 
+test('a duplicate invalid session cookie before the valid one does not block the handshake', () =>
+  withChat({}, async (ctx) => {
+    const bad = 'Z'.repeat(43);
+    const cookie = `d7_session=${bad}; d7_session=${ctx.tokens['u-pro1']}`;
+    const pro = await ctx.connect('u-pro1', 'a1', { cookie });
+    assert.equal((await pro.take('history')).type, 'history');
+
+    // The same duplicates without a valid value are still refused.
+    const none = `d7_session=${bad}; d7_session=${'Y'.repeat(43)}`;
+    assert.equal((await refusalOf(ctx.connect('u-pro1', 'a1', { cookie: none }))).status, 401);
+
+    // A revoked session is refused even when an invalid duplicate comes first.
+    await ctx.sessions.revoke(ctx.tokens['u-cli1']);
+    const revoked = `d7_session=${bad}; d7_session=${ctx.tokens['u-cli1']}`;
+    assert.equal((await refusalOf(ctx.connect('u-cli1', 'a1', { cookie: revoked }))).status, 401);
+  }));
+
 test('a participant connects, the first frame is the history, and the connection is audited', () =>
   withChat({}, async (ctx) => {
     const pro = await ctx.connect('u-pro1', 'a1');

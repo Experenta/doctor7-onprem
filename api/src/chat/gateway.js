@@ -2,7 +2,7 @@
 
 const { randomUUID } = require('node:crypto');
 const { WebSocket, WebSocketServer } = require('ws');
-const { parseCookies } = require('../auth/cookies');
+const { resolveSession } = require('../auth/requestSession');
 const { createSequencer } = require('./sequence');
 const { chatDenialReason, isClosed } = require('./access');
 const {
@@ -249,8 +249,7 @@ function createChatGateway({
       return;
     }
 
-    const token = parseCookies(req.headers.cookie)[cookieName];
-    const auth = await sessions.authenticate(token);
+    const { auth, token } = await resolveSession(sessions, req.headers.cookie, cookieName);
     if (!auth) {
       rejectUpgrade(socket, 401, 'unauthenticated', 'Sign-in is required.');
       return;

@@ -23,6 +23,24 @@ function parseCookies(header) {
   return out;
 }
 
+// Returns every value sent under `name`, in header order. A browser sends two
+// cookies of one name when an old cookie with another Path is still stored.
+// parseCookies keeps only the first one, so callers that must try each value use this.
+function parseCookieValues(header, name) {
+  const out = [];
+  if (typeof header !== 'string' || typeof name !== 'string' || name === '') {
+    return out;
+  }
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index === -1) continue;
+    if (part.slice(0, index).trim() === name) {
+      out.push(part.slice(index + 1).trim());
+    }
+  }
+  return out;
+}
+
 // Every cookie this module sets is HttpOnly and Secure.
 function serializeCookie(name, value, { maxAgeSeconds, sameSite, path = '/' }) {
   if (!NAME.test(name) || !/^[A-Za-z0-9_-]*$/.test(value)) {
@@ -45,4 +63,4 @@ function clearCookie(name, { sameSite, path = '/' }) {
   return serializeCookie(name, '', { maxAgeSeconds: 0, sameSite, path });
 }
 
-module.exports = { parseCookies, serializeCookie, clearCookie };
+module.exports = { parseCookies, parseCookieValues, serializeCookie, clearCookie };

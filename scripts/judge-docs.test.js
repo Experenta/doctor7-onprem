@@ -158,11 +158,11 @@ test('the demo script adds up to 180 seconds or less, and its own numbers agree'
 
 // ---- The task count and the specification folders of the Kiro documents ----
 
-const TASK_COUNT = 23;
+const TASK_COUNT = 26;
 const TASK_SENTENCE =
-  '23 tasks were given to Kiro agents: K-01 to K-24 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19.';
+  '26 tasks were given to Kiro agents: K-01 to K-26 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19.';
 const SPEC_SENTENCE =
-  'From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11 and K-19b, which have none.';
+  'From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, and K-25, which have none.';
 // Phrases that the documents must no longer contain.
 const OLD_PHRASES = ['numbered tasks', 'each task began by writing a specification', 'each task also began with a specification'];
 const KIRO_DOCS = [

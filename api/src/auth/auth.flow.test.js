@@ -27,6 +27,9 @@ const USERS = [
 class Jar {
   constructor() {
     this.cookies = new Map();
+    // Path of each stored cookie. A deletion only applies to the cookie of the same
+    // path, as in a browser, so the Path=/api/ deletion leaves the Path=/ cookie alone.
+    this.paths = new Map();
   }
 
   absorb(res) {
@@ -36,10 +39,17 @@ class Jar {
       const name = pair.slice(0, index);
       const value = pair.slice(index + 1);
       const maxAge = attributes.find((attribute) => /^max-age=/i.test(attribute));
+      const pathAttribute = attributes.find((attribute) => /^path=/i.test(attribute));
+      const path = pathAttribute ? pathAttribute.split('=')[1] : '/';
       if (maxAge && Number(maxAge.split('=')[1]) <= 0) {
-        this.cookies.delete(name);
+        const stored = this.paths.get(name);
+        if (stored === undefined || stored === path) {
+          this.cookies.delete(name);
+          this.paths.delete(name);
+        }
       } else {
         this.cookies.set(name, value);
+        this.paths.set(name, path);
       }
     }
   }
@@ -51,6 +61,7 @@ class Jar {
   clone() {
     const copy = new Jar();
     copy.cookies = new Map(this.cookies);
+    copy.paths = new Map(this.paths);
     return copy;
   }
 }
@@ -216,6 +227,19 @@ test('cookie headers: session is HttpOnly, Secure, SameSite=Strict, with a lifet
     // The login binding cookie is cleared by the callback.
     const cleared = cookies.find((line) => line.startsWith('d7_login='));
     assert.match(cleared, /Max-Age=0/);
+  });
+});
+
+test('cookie headers: sign-in also deletes the legacy session cookie of Path=/api/', async () => {
+  await withEnv({}, async (env) => {
+    const attempt = await env.begin('mock-ana');
+    const res = await attempt.callback();
+    const lines = res.headers.getSetCookie().filter((line) => line.startsWith('d7_session='));
+    assert.equal(lines.length, 2);
+    // The live cookie comes first, then the deletion of the legacy path.
+    assert.match(lines[0], /; Path=\/;/);
+    assert.match(lines[0], new RegExp(`; Max-Age=${ABSOLUTE_TTL}(;|$)`));
+    assert.match(lines[1], /^d7_session=; Max-Age=0; Path=\/api\/; HttpOnly; Secure; SameSite=Strict$/);
   });
 });
 
