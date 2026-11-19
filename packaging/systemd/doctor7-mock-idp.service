@@ -1,0 +1,44 @@
+# doctor7-mock-idp: demo sign-in provider. Demo only, never production.
+#
+# This unit runs the mock identity provider for the public demo. Its accounts need
+# no password. Do not run it on a production server. The unit is disabled by
+# default: an administrator enables it by hand on the demo host.
+#
+# /etc/doctor7/idp-demo.env sets MOCK_IDP_PUBLIC_URL, MOCK_IDP_REDIRECT_URIS and
+# MOCK_IDP_CLIENT_ID. The host name is kept there, not in this file.
+# See docs/DEMO.md.
+
+[Unit]
+Description=doctor7 demo sign-in provider (synthetic accounts, demo only)
+After=network.target
+
+[Service]
+Type=simple
+User=doctor7-idp
+Group=doctor7-idp
+EnvironmentFile=/etc/doctor7/idp-demo.env
+Environment=MOCK_IDP_PORT=4010
+ExecStart=/usr/bin/node /usr/lib/doctor7/mock-idp/server.js
+WorkingDirectory=/usr/lib/doctor7/mock-idp
+Restart=on-failure
+RestartSec=5
+
+# Hardening. The provider writes nothing to disk and needs no privileges.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

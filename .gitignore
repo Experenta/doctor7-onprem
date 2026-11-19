@@ -24,3 +24,6 @@ Thumbs.db
 # Forbidden-word list kept outside the repository (see README.md)
 scripts/forbidden-words.local.txt
 
+# Output of the seed generator (seed/generate.js), if written inside the repository
+seed/out/
+

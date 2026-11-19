@@ -1,0 +1,6 @@
+[
+  {"id": "audit-1", "actorId": "u-ana", "action": "auth.login", "targetType": "user", "targetId": "u-ana", "occurredAt": "2026-01-05T14:00:00.000Z", "centerId": "demo-center", "outcome": "success", "ip": "203.0.113.10", "reason": null},
+  {"id": "audit-2", "actorId": "u-luis", "action": "auth.login", "targetType": "user", "targetId": "u-luis", "occurredAt": "2026-01-05T14:01:00.000Z", "centerId": "demo-center", "outcome": "maybe", "ip": "203.0.113.10"},
+  {"id": "audit-3", "actorId": null, "action": "request.denied", "targetType": "route", "targetId": null, "occurredAt": "2026-01-05T14:02:00.000Z", "centerId": null, "outcome": "denied", "ip": "203.0.113.10", "reason": "no_rule"},
+  "plain text row"
+]

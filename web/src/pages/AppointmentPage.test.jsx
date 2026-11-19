@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appointment, fail, FakeWebSocket, never, ok, renderApp, videoUrl } from '../test/helpers.jsx';
@@ -122,12 +122,16 @@ describe('Video', () => {
 
 describe('Chat', () => {
   const socket = () => FakeWebSocket.instances.at(-1);
+  // ChatPanel creates the socket in an effect, which can run after the "Chat"
+  // heading is already in the DOM. Wait for the socket itself, not the heading.
+  const waitForSockets = (count) => waitFor(() => expect(FakeWebSocket.instances).toHaveLength(count));
   const frame = (ws, data) => act(() => ws.onmessage({ data: JSON.stringify(data) }));
   const message = (id, senderId, body) => ({ id, appointmentId: 'a1', senderId, body, sentAt: '2026-12-02T15:05:00.000Z' });
 
   const openChat = async (role = 'professional') => {
     page({}, role);
     await screen.findByRole('heading', { name: 'Chat' });
+    await waitForSockets(1);
     const ws = socket();
     act(() => ws.onopen());
     return ws;
@@ -200,12 +204,13 @@ describe('Chat', () => {
     const ws = await openChat();
     act(() => ws.onclose({ code: 1006 }));
     await userEvent.click(screen.getByRole('button', { name: 'Reconnect to chat' }));
-    expect(FakeWebSocket.instances).toHaveLength(2);
+    await waitForSockets(2);
   });
 
   it('closes the socket when the user leaves the page', async () => {
     const view = page();
     await screen.findByRole('heading', { name: 'Chat' });
+    await waitForSockets(1);
     const ws = socket();
     view.unmount();
     expect(ws.closed).toBe(true);

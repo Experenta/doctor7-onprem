@@ -1,0 +1,5 @@
+[
+  {"id": "msg-ok", "appointmentId": "apt-ok", "senderId": "u-ana", "body": "Synthetic greeting.", "sentAt": "2026-01-05T15:02:00.000Z"},
+  {"id": "msg-precision", "appointmentId": "apt-ok", "senderId": "u-luis", "body": "Too precise.", "sentAt": "2026-01-05T15:03:00.123456Z"},
+  {"id": "msg-stranger", "appointmentId": "apt-ok", "senderId": "u-diego", "body": "Not a participant.", "sentAt": "2026-01-05T15:04:00.000Z"}
+]
