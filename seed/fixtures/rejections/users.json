@@ -1,0 +1,7 @@
+[
+  {"id": "u-ana", "centerId": "demo-center", "email": "ana.rivera@example.test", "displayName": "Ana Rivera", "role": "professional", "createdAt": "2026-01-02T00:00:00.000Z"},
+  {"id": "u-luis", "centerId": "demo-center", "email": "luis.mora@example.test", "displayName": "Luis Mora", "role": "client", "createdAt": {"seconds": 1767312000, "nanoseconds": 0}},
+  {"id": "u-iris", "centerId": "demo-center", "email": "ana.rivera@example.test", "displayName": "Iris Vega", "role": "auditor", "createdAt": "2026-01-02T00:00:00.000Z"},
+  {"id": "u-marta", "centerId": "missing-center", "email": "marta.solis@example.test", "displayName": "Marta Solis", "role": "admin", "createdAt": "2026-01-02T00:00:00.000Z"},
+  {"id": "u-bad", "centerId": "demo-center", "email": "not-an-email", "displayName": "Bad Row", "role": "client", "createdAt": "2026-01-02T00:00:00.000Z"}
+]

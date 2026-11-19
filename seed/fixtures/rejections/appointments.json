@@ -1,0 +1,6 @@
+[
+  {"id": "apt-ok", "centerId": "demo-center", "professionalId": "u-ana", "clientId": "u-luis", "startsAt": "2026-01-05T15:00:00.000Z", "endsAt": "2026-01-05T15:50:00.000Z", "status": "completed", "createdAt": "2026-01-03T10:00:00.000Z"},
+  {"id": "apt-backwards", "centerId": "demo-center", "professionalId": "u-ana", "clientId": "u-luis", "startsAt": "2026-01-06T15:00:00.000Z", "endsAt": "2026-01-06T14:00:00.000Z", "status": "scheduled", "createdAt": "2026-01-03T10:00:00.000Z"},
+  {"id": "apt-swapped", "centerId": "demo-center", "professionalId": "u-luis", "clientId": "u-ana", "startsAt": "2026-01-07T15:00:00.000Z", "endsAt": "2026-01-07T15:50:00.000Z", "status": "scheduled", "createdAt": "2026-01-03T10:00:00.000Z"},
+  {"id": "apt-no-client", "centerId": "demo-center", "professionalId": "u-ana", "clientId": "u-nobody", "startsAt": "2026-01-08T15:00:00.000Z", "endsAt": "2026-01-08T15:50:00.000Z", "status": "scheduled", "createdAt": "2026-01-03T10:00:00.000Z"}
+]

@@ -1,0 +1,5 @@
+[
+  {"id": "cons-ok", "appointmentId": "apt-ok", "body": {"note": "Synthetic note.", "mood": 6}, "createdAt": {"seconds": 1767445200, "nanoseconds": 0}},
+  {"id": "cons-orphan", "appointmentId": "apt-missing", "body": {"note": "Synthetic note."}, "createdAt": "2026-01-03T13:00:00.000Z"},
+  {"id": "cons-array", "appointmentId": "apt-ok", "body": ["not", "an", "object"], "createdAt": "2026-01-03T13:00:00.000Z"}
+]
