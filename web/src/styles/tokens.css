@@ -1,0 +1,70 @@
+/* Doctor7 theme tokens. Every color in the app comes from this file. */
+:root {
+  /* Brief palette */
+  --color-heading: #5e60ce;
+  --color-primary: #7400b8;
+  --color-primary-border: #bca5eb;
+  --color-secondary: #9278c5;
+  --color-secondary-surface: #7f45d9;
+  --color-now: #7a5cff;
+
+  --gradient-main: linear-gradient(49deg, #7400b8 33%, #33bfe9 100%);
+  --gradient-button: linear-gradient(90deg, #8161f3, #4da4ff);
+
+  --stat-1: linear-gradient(135deg, #fe69a5, #ff875e);
+  --stat-2: linear-gradient(135deg, #5e72e4, #8e70ee);
+  --stat-3: linear-gradient(135deg, #119bd2, #3ad0bf);
+  --stat-4: linear-gradient(135deg, #8362f7, #ee70e9);
+
+  /* Neutrals tinted toward the primary hue */
+  --color-ink: #1d1a33;
+  --color-ink-muted: #54507a;
+  --color-bg: #f7f5fd;
+  --color-surface: #ffffff;
+  --color-surface-muted: #ece8f8;
+  --color-line: #ddd5f1;
+
+  /* Text on the primary surface */
+  --color-on-primary: #ffffff;
+  --color-on-primary-muted: #ead9f8;
+
+  /* Icons on the stat tiles need 3:1 against every stop of the four pairs.
+     White fails on the pink pair, so the tiles use the dark ink. */
+  --color-on-stat: #1d1a33;
+
+  /* State colors */
+  --color-danger: #a3123a;
+  --color-danger-surface: #fdecf1;
+  --color-danger-border: #e6a3b8;
+  --color-success: #0b6b4f;
+  --color-success-surface: #e6f6f0;
+  --color-success-border: #98d4be;
+
+  --color-selection-bg: #d9c8f5;
+  --color-selection-text: #1d1a33;
+  --color-focus: #7a5cff;
+
+  /* Type: fixed rem scale, ratio 1.2 */
+  --font-body: 'Lato', sans-serif;
+  --font-heading: 'Montserrat', sans-serif;
+  --text-sm: 0.833rem;
+  --text-base: 1rem;
+  --text-md: 1.2rem;
+  --text-lg: 1.44rem;
+  --text-xl: 1.728rem;
+  --measure: 70ch;
+
+  /* Space, shape, shadow, motion */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow-soft: 0 2px 12px rgba(29, 26, 51, 0.1);
+  --shadow-raised: 0 4px 16px rgba(29, 26, 51, 0.14);
+  --motion: 200ms;
+  --target: 2.75rem;
+}
