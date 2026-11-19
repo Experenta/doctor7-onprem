@@ -20,6 +20,7 @@ of the service, never in this repository.
 |---|---|
 | `doctor7-api` | API code with production dependencies, `doctor7-api.service`, the chat purge service and timer, backup and restore commands, the `doctor7` service user. |
 | `doctor7-web` | Static files of the web application and the Apache virtual host. |
+| `doctor7-demo` | Demo only. Mock identity provider and its unit. Not in `all`. See the Demo package section. |
 
 | Path | Content |
 |---|---|
@@ -291,3 +292,25 @@ Settings files in `/etc/doctor7` are not touched by an upgrade or a rollback.
 `apt-get remove` keeps them. `apt-get purge` deletes `api.env`, `backup.conf` and
 `web.vars.conf`. It keeps `/var/lib/doctor7`, the backups, and the `doctor7`
 user.
+
+
+## Demo package
+
+`doctor7-demo` runs the mock identity provider for the public demo. Install it on
+the demo host only. Never install it on a production server. `docs/DEMO.md`
+describes the whole demo.
+
+- Build it on its own: `node packaging/build-deb.js demo --out /tmp/doctor7-debs`.
+  `all` does not include it. It depends on `doctor7-api`, which provides the
+  Node.js lookup, and on `adduser` and `systemd`.
+- It installs `/usr/lib/doctor7/mock-idp/`, `/usr/lib/doctor7/start-idp.sh`, and
+  the unit `doctor7-mock-idp.service`. It creates the system user `doctor7-idp`
+  when that user is missing.
+- It creates `/etc/doctor7/idp-demo.env` from a template that holds names only. The
+  file has mode 0640 and group `doctor7-idp`. The package creates it only when it
+  is missing.
+- The install does not enable or start the unit. On the demo host, run
+  `systemctl enable --now doctor7-mock-idp.service`.
+- `apt-get remove` stops and disables the unit and keeps the settings file.
+  `apt-get purge` removes `/etc/doctor7/idp-demo.env`, and removes `/etc/doctor7`
+  only when it is empty. It keeps the `doctor7-idp` user and every other file.

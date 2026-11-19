@@ -1,0 +1,25 @@
+#!/bin/sh
+set -e
+
+ENV_FILE=/etc/doctor7/idp-demo.env
+ENV_DIR=/etc/doctor7
+
+case "$1" in
+  remove | upgrade | failed-upgrade | abort-install | abort-upgrade | disappear)
+    if [ "$1" = "remove" ] && [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload || true
+    fi
+    ;;
+  purge)
+    # Remove only what this package created. The service user, the settings of
+    # other packages, and any directory that still holds files stay.
+    rm -f "$ENV_FILE"
+    rmdir "$ENV_DIR" 2>/dev/null || true
+    ;;
+  *)
+    echo "postrm called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0
