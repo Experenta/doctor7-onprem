@@ -32,12 +32,20 @@ const NAMES = { api: 'doctor7-api', web: 'doctor7-web', demo: 'doctor7-demo' };
 const REQUIRED_CONTROL_FIELDS = ['Package', 'Version', 'Architecture', 'Maintainer', 'Description'];
 const MAINTAINER_SCRIPTS = ['postinst', 'prerm', 'postrm'];
 const VERSION_PATTERN = /^[0-9][A-Za-z0-9.+~-]*$/;
+// A package installs only below these folders. A file anywhere else would land
+// at the root of the system.
+const PACKAGE_TOP_DIRS = ['DEBIAN', 'usr', 'etc'];
 
 class BuildError extends Error {
   constructor(message) {
     super(message);
     this.name = 'BuildError';
   }
+}
+
+// Test files and git placeholders never enter a package.
+function isNeverPackaged(name) {
+  return name.endsWith('.test.js') || name.endsWith('.test.mjs') || name === '.gitkeep';
 }
 
 // Reads the fields of a Debian control file. Continuation lines are joined.
@@ -105,6 +113,13 @@ function checkInputs({ root, packages, webDist, installDeps }) {
         problems.push(`packaging/${pkg}/DEBIAN/control names the package ${fields.Package}, expected ${NAMES[pkg]}.`);
       }
     }
+    if (exists(source)) {
+      for (const rel of packageFiles(source)) {
+        if (!PACKAGE_TOP_DIRS.some((dir) => rel.startsWith(`${dir}/`))) {
+          problems.push(`packaging/${pkg}/${rel} is outside DEBIAN/, usr/ and etc/, so it would be installed at /${rel}. Move it out of packaging/${pkg}/.`);
+        }
+      }
+    }
   }
 
   if (packages.includes('api')) {
@@ -162,6 +177,14 @@ function walk(dir) {
     const full = path.join(dir, entry.name);
     return entry.isDirectory() ? [full, ...walk(full)] : [full];
   });
+}
+
+// Paths, relative to a package source folder and with "/" separators, of the
+// files that the builder copies into the package.
+function packageFiles(source) {
+  return walk(source)
+    .filter((file) => fs.statSync(file).isFile() && !isNeverPackaged(path.basename(file)))
+    .map((file) => path.relative(source, file).split(path.sep).join('/'));
 }
 
 // Directories 0755. Files with a shebang line 0755. Other files 0644.
@@ -265,7 +288,10 @@ function buildOne(pkg, { root, out, version, webDist, installDeps, log }) {
   const name = NAMES[pkg];
   const tree = path.join(out, `${name}_${version}`);
   fs.rmSync(tree, { recursive: true, force: true });
-  copyTree(path.join(root, 'packaging', pkg), tree, { normalize: true });
+  copyTree(path.join(root, 'packaging', pkg), tree, {
+    normalize: true,
+    filter: (source, entry) => !(entry.isFile() && isNeverPackaged(entry.name)),
+  });
 
   if (pkg === 'api') addApiPayload({ root, tree, out, installDeps });
   else if (pkg === 'demo') addDemoPayload({ root, tree });

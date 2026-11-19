@@ -452,3 +452,60 @@ test('the builder assembles the demo package tree with the provider and its temp
   if (demo.deb === null) assert.ok(logs.some((line) => line.includes('dpkg-deb was not found')));
   else assert.ok(fs.existsSync(demo.deb));
 });
+
+
+// The rule every installed path must follow, checked here on its own, not by the builder.
+const PACKAGE_DIRS = ['DEBIAN/', 'usr/', 'etc/'];
+const isTestName = (name) => name.endsWith('.test.js') || name.endsWith('.test.mjs');
+const relativeFiles = (dir) =>
+  walk(dir)
+    .filter((file) => fs.statSync(file).isFile())
+    .map((file) => path.relative(dir, file).split(path.sep).join('/'));
+
+test('the package source folders hold no test file and no file outside DEBIAN, usr and etc', () => {
+  for (const pkg of ['api', 'web', 'demo']) {
+    for (const rel of relativeFiles(path.join(PKG, pkg))) {
+      if (rel === '.gitkeep') continue;
+      assert.ok(!isTestName(rel), `packaging/${pkg}/${rel} is a test file: move it out of the package folder`);
+      assert.ok(PACKAGE_DIRS.some((dir) => rel.startsWith(dir)), `packaging/${pkg}/${rel} is outside DEBIAN, usr and etc`);
+    }
+  }
+});
+
+test('the built api, web and demo trees hold only DEBIAN, usr and etc, and no test file', (t) => {
+  const dir = makeTemp(t);
+  const results = build({
+    root: ROOT,
+    out: path.join(dir, 'out'),
+    packages: ['api', 'web', 'demo'],
+    webDist: makeDist(dir),
+    version: '1.2.3-1',
+    installDeps: false,
+    log: () => {},
+  });
+  assert.deepEqual(results.map((result) => result.name), ['doctor7-api', 'doctor7-web', 'doctor7-demo']);
+  for (const { name, tree } of results) {
+    const files = relativeFiles(tree);
+    assert.ok(files.length > 0, `${name} has files`);
+    for (const rel of files) {
+      assert.ok(PACKAGE_DIRS.some((dir) => rel.startsWith(dir)), `${name}: ${rel} would be installed outside DEBIAN, usr and etc`);
+      assert.ok(!isTestName(rel), `${name}: ${rel} is a test file`);
+    }
+  }
+});
+
+test('the builder refuses a file outside DEBIAN, usr and etc before it builds anything', (t) => {
+  const dir = makeTemp(t);
+  const repo = path.join(dir, 'repo');
+  fs.cpSync(path.join(PKG, 'demo'), path.join(repo, 'packaging', 'demo'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'packaging', 'demo', 'stray.txt'), 'stray\n');
+  fs.writeFileSync(path.join(repo, 'packaging', 'demo', 'x.test.js'), '');
+  const out = path.join(dir, 'out');
+  assert.throws(
+    () => build({ root: repo, out, packages: ['demo'], version: '1.0.0-1', installDeps: false, log: () => {} }),
+    (err) => err instanceof BuildError
+      && /packaging\/demo\/stray\.txt is outside DEBIAN\/, usr\/ and etc\//.test(err.message)
+      && !/x\.test\.js/.test(err.message),
+  );
+  assert.equal(fs.existsSync(out), false, 'nothing is written when the check fails');
+});

@@ -6,10 +6,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { parseControl } = require('../build-deb');
+const { parseControl } = require('./build-deb');
 
-const DEMO = __dirname;
-const PACKAGING = path.join(DEMO, '..');
+const DEMO = path.join(__dirname, 'demo');
+const PACKAGING = __dirname;
 const read = (...parts) => fs.readFileSync(path.join(DEMO, ...parts), 'utf8');
 
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
