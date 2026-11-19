@@ -5,6 +5,7 @@ const { ApiError } = require('../http/errors');
 const { OidcError } = require('./oidc');
 const { parseCookies, serializeCookie, clearCookie } = require('./cookies');
 const { randomToken, sha256Hex, pkceChallenge, safeEqual } = require('./tokens');
+const { discardingAudit } = require('../audit/entry');
 
 const LOGIN_COOKIE = 'd7_login';
 const LOGIN_PATH = '/auth';
@@ -24,7 +25,17 @@ function noStore(res) {
   res.set('Cache-Control', 'no-store');
 }
 
-function createAuthRouter({ config, store, sessions, oidc, logger = console, now = () => new Date() }) {
+// `audit` receives one entry for each sign-in outcome, each logout, and each
+// refused sign-in. The entries carry reason codes, never tokens or emails.
+function createAuthRouter({
+  config,
+  store,
+  sessions,
+  oidc,
+  logger = console,
+  now = () => new Date(),
+  audit = discardingAudit,
+}) {
   const router = Router();
 
   function sessionCookie(token, expiresAt) {
@@ -47,9 +58,24 @@ function createAuthRouter({ config, store, sessions, oidc, logger = console, now
     return err;
   }
 
-  function loginFailed(reason) {
+  // Records a refused sign-in and returns the error for the caller to throw.
+  // The actor is unknown at this point, so the entry has no actor and no center.
+  async function rejected(req, reason, error) {
+    await audit.record({
+      actorId: null,
+      centerId: null,
+      ip: req.ip,
+      action: 'auth.login',
+      targetType: 'user',
+      outcome: 'failure',
+      reason,
+    });
+    return error;
+  }
+
+  async function loginFailed(req, reason) {
     logEvent(logger, 'login_failed', reason);
-    return new ApiError(401, 'login_failed', 'Sign-in failed.');
+    return rejected(req, reason, new ApiError(401, 'login_failed', 'Sign-in failed.'));
   }
 
   // GET /auth/login: start the authorization code flow with PKCE.
@@ -108,30 +134,30 @@ function createAuthRouter({ config, store, sessions, oidc, logger = console, now
 
     const { state, code, error } = req.query;
     if (typeof state !== 'string' || !STATE_PATTERN.test(state)) {
-      throw new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.');
+      throw await rejected(req, 'invalid_request', new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.'));
     }
 
     // The attempt is deleted by this read, so a state value works once.
     const attempt = await store.consumeLoginAttempt(sha256Hex(state));
     if (!attempt) {
       logEvent(logger, 'callback_rejected', 'state_unknown');
-      throw new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.');
+      throw await rejected(req, 'state_unknown', new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.'));
     }
     if (attempt.expiresAt <= now()) {
       logEvent(logger, 'callback_rejected', 'attempt_expired');
-      throw new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.');
+      throw await rejected(req, 'attempt_expired', new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.'));
     }
     const binding = parseCookies(req.headers.cookie)[LOGIN_COOKIE];
     if (!binding || !safeEqual(sha256Hex(binding), attempt.bindingHash)) {
       logEvent(logger, 'callback_rejected', 'binding_mismatch');
-      throw new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.');
+      throw await rejected(req, 'binding_mismatch', new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.'));
     }
 
     if (error !== undefined) {
-      throw loginFailed('provider_returned_error');
+      throw await loginFailed(req, 'provider_returned_error');
     }
     if (typeof code !== 'string' || code.length === 0 || code.length > CODE_MAX_LENGTH) {
-      throw new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.');
+      throw await rejected(req, 'invalid_request', new ApiError(400, 'invalid_login_request', 'The sign-in request is not valid.'));
     }
 
     let identity;
@@ -139,21 +165,46 @@ function createAuthRouter({ config, store, sessions, oidc, logger = console, now
       const idToken = await oidc.exchangeCode({ code, codeVerifier: attempt.codeVerifier });
       identity = await oidc.verifyIdToken(idToken, { nonce: attempt.nonce });
     } catch (err) {
-      const handled = providerError(err);
-      if (handled instanceof OidcError) {
-        throw loginFailed(handled.reason);
+      if (!(err instanceof OidcError)) {
+        throw err;
       }
-      throw handled;
+      logEvent(logger, 'provider', err.reason);
+      if (err.unavailable) {
+        throw await rejected(
+          req,
+          err.reason,
+          new ApiError(502, 'identity_provider_unavailable', 'The identity provider is not available.')
+        );
+      }
+      throw await loginFailed(req, err.reason);
     }
 
     // Role and center come from the users table, matched on the verified email.
     const user = await store.findUserByEmail(identity.email);
     if (!user) {
       logEvent(logger, 'login_denied', 'user_not_found');
+      await audit.record({
+        actorId: null,
+        centerId: null,
+        ip: req.ip,
+        action: 'auth.login',
+        targetType: 'user',
+        outcome: 'denied',
+        reason: 'user_not_found',
+      });
       throw new ApiError(403, 'access_denied', 'This account is not authorized for this system.');
     }
 
     const session = await sessions.create(user);
+    await audit.record({
+      actorId: user.id,
+      centerId: user.centerId,
+      ip: req.ip,
+      action: 'auth.login',
+      targetType: 'user',
+      targetId: user.id,
+      outcome: 'success',
+    });
     res.append('Set-Cookie', sessionCookie(session.token, session.expiresAt));
     res.redirect(302, config.postLoginPath);
   });
@@ -176,17 +227,28 @@ function createAuthRouter({ config, store, sessions, oidc, logger = console, now
   });
 
   // POST /auth/logout: revoke this session, or every session of the user when
-  // the body is {"all":true}. It always answers 204 and clears the cookie.
+  // the body is {"all":true}. It always answers 204 and clears the cookie. Each
+  // call writes one audit entry. It is a failure with reason no_session when the
+  // cookie names no live session.
   router.post('/auth/logout', async (req, res) => {
     noStore(res);
     const token = parseCookies(req.headers.cookie)[config.sessionCookieName];
     const wantsAll = req.body && req.body.all === true;
-    const auth = wantsAll ? await sessions.authenticate(token) : null;
-    if (auth) {
+    const auth = await sessions.authenticate(token);
+    if (auth && wantsAll) {
       await sessions.revokeAllForUser(auth.user.id);
     } else {
       await sessions.revoke(token);
     }
+    await audit.record({
+      actorId: auth ? auth.user.id : null,
+      centerId: auth ? auth.user.centerId : null,
+      ip: req.ip,
+      action: wantsAll ? 'auth.logout_all' : 'auth.logout',
+      targetType: 'session',
+      outcome: auth ? 'success' : 'failure',
+      reason: auth ? null : 'no_session',
+    });
     res.append('Set-Cookie', clearedSession());
     res.status(204).end();
   });
@@ -205,10 +267,11 @@ function createRequireSession({ config, sessions }) {
         if (!auth) {
           throw new ApiError(401, 'unauthenticated', 'Sign-in is required.');
         }
+        // req.auth is set before the role check, so a 403 can name its actor in the audit log.
+        req.auth = auth;
         if (roles.length > 0 && !roles.includes(auth.user.role)) {
           throw new ApiError(403, 'forbidden', 'This account may not use this resource.');
         }
-        req.auth = auth;
         next();
       } catch (err) {
         next(err);

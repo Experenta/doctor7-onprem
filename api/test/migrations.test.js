@@ -27,7 +27,7 @@ test('every migration has non-empty up and down sections', () => {
 });
 
 test('the down section drops exactly the tables the up section creates', () => {
-  for (const migration of migrations) {
+  for (const migration of migrations.filter((m) => m.up.every((s) => s.startsWith('CREATE TABLE')))) {
     const created = createdTables(migration.up);
     assert.ok(created.every(Boolean), `${migration.version} has a non-CREATE up statement`);
     const dropped = migration.down.map((statement) => {
@@ -39,13 +39,41 @@ test('the down section drops exactly the tables the up section creates', () => {
   }
 });
 
-test('CREATE and DROP statements are idempotent', () => {
+test('CREATE statements are idempotent, and ALTER statements touch only audit_log', () => {
   for (const migration of migrations) {
     for (const statement of migration.up) {
-      assert.match(statement, /^CREATE TABLE IF NOT EXISTS /);
+      if (statement.startsWith('CREATE')) {
+        assert.match(statement, /^CREATE TABLE IF NOT EXISTS /);
+      } else {
+        assert.match(statement, /^ALTER TABLE audit_log\n/, `${migration.version} alters another table`);
+      }
     }
   }
 });
+
+test('the audit columns migration has one ALTER per direction and no IF EXISTS on DROP COLUMN', () => {
+  const audit = migrations.find((m) => m.version === '0003_audit_columns');
+  assert.ok(audit, '0003_audit_columns is missing');
+  assert.equal(audit.up.length, 1, 'the up direction must be a single statement');
+  assert.equal(audit.down.length, 1, 'the down direction must be a single statement');
+  assert.ok(!/IF EXISTS/i.test(audit.down[0]), 'DROP COLUMN must not use IF EXISTS');
+});
+
+test('the audit columns migration adds exactly the agreed columns with the agreed types', () => {
+  const [up] = migrations.find((m) => m.version === '0003_audit_columns').up;
+  assert.match(up, /ADD COLUMN center_id VARCHAR\(64\) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL/);
+  assert.match(up, /ADD COLUMN outcome ENUM\('success', 'denied', 'failure'\) NOT NULL/);
+  assert.match(up, /ADD COLUMN ip VARCHAR\(45\) NULL/);
+  assert.match(up, /ADD COLUMN reason VARCHAR\(100\) NULL/);
+  assert.equal((up.match(/ADD COLUMN/g) || []).length, 4, 'expected exactly four added columns');
+});
+
+test('the audit columns migration reverts exactly the columns it adds', () => {
+  const [down] = migrations.find((m) => m.version === '0003_audit_columns').down;
+  const dropped = [...down.matchAll(/DROP COLUMN (\w+)/g)].map((match) => match[1]).sort();
+  assert.deepEqual(dropped, ['center_id', 'ip', 'outcome', 'reason']);
+});
+
 
 test('ids, foreign keys, and emails use the binary collation', () => {
   const columnLine = /^\s*(\w+)\s+(VARCHAR|CHAR)\(\d+\)(.*)$/;
@@ -67,7 +95,7 @@ test('ids, foreign keys, and emails use the binary collation', () => {
 });
 
 test('the schema declares exactly the application and sign-in tables', () => {
-  const names = migrations.flatMap((m) => createdTables(m.up));
+  const names = migrations.flatMap((m) => createdTables(m.up)).filter(Boolean);
   assert.deepEqual(
     [...names].sort(),
     [

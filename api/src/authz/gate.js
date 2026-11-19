@@ -2,6 +2,7 @@
 
 const { ApiError } = require('../http/errors');
 const { ROLES, rolesFor } = require('./policy');
+const { requestContext, discardingAudit } = require('../audit/entry');
 
 // Route rules. A request reaches a handler only if a rule here matches its
 // method and path. Roles come from the policy matrix, so the two cannot drift.
@@ -12,7 +13,10 @@ const ROUTE_RULES = Object.freeze([
   { method: 'POST', path: '/appointments', resource: 'appointment', action: 'create' },
   { method: 'POST', path: '/consultations', resource: 'consultation', action: 'create' },
   { method: 'GET', path: '/consultations/:id', resource: 'consultation', action: 'read' },
+  { method: 'GET', path: '/audit', resource: 'audit', action: 'read' },
 ]);
+
+const ID_MAX_LENGTH = 64;
 
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH']);
 
@@ -24,7 +28,7 @@ function compileRules(rules) {
     if (roles.length === 0 || roles.some((role) => !ROLES.includes(role))) {
       throw new TypeError(`Rule ${rule.method} ${rule.path} has no role in the matrix.`);
     }
-    return { method: rule.method, segments: rule.path.split('/'), roles };
+    return { method: rule.method, segments: rule.path.split('/'), roles, resource: rule.resource, action: rule.action };
   });
 }
 
@@ -35,6 +39,14 @@ function matches(rule, method, path) {
   return rule.segments.every((segment, index) =>
     segment.startsWith(':') ? parts[index].length > 0 : segment === parts[index]
   );
+}
+
+// The record id in the path, when the rule has an :id segment. Null otherwise.
+function targetIdOf(rule, path) {
+  const index = rule.segments.indexOf(':id');
+  if (index === -1) return null;
+  const value = path.split('/')[index];
+  return value && Array.from(value).length <= ID_MAX_LENGTH ? value : null;
 }
 
 function isJson(req) {
@@ -48,10 +60,12 @@ function isJson(req) {
 //   1. A state-changing request without a JSON content type gets 415. This is
 //      an extra CSRF defense on top of SameSite=Strict, because a cross-site
 //      form cannot send application/json.
-//   2. A request that matches no rule gets 403, signed in or not.
+//   2. A request that matches no rule gets 403, signed in or not. The refusal
+//      is audited with reason no_rule. The request has no actor yet.
 //   3. requireSession answers 401 without a live session and 403 for a role
-//      the rule does not allow.
-function createAuthzGate({ requireSession, rules = ROUTE_RULES }) {
+//      the rule does not allow. That 403 is audited with reason role_not_allowed.
+// `audit` is the audit sink. The application always passes one (see app.js).
+function createAuthzGate({ requireSession, rules = ROUTE_RULES, audit = discardingAudit }) {
   const compiled = compileRules(rules);
   return function authzGate(req, res, next) {
     if (STATE_CHANGING.has(req.method) && !isJson(req)) {
@@ -60,10 +74,36 @@ function createAuthzGate({ requireSession, rules = ROUTE_RULES }) {
     }
     const rule = compiled.find((candidate) => matches(candidate, req.method, req.path));
     if (!rule) {
-      next(new ApiError(403, 'forbidden', 'This account may not use this resource.'));
+      audit
+        .record({
+          ...requestContext(req),
+          action: 'request.denied',
+          targetType: 'route',
+          outcome: 'denied',
+          reason: 'no_rule',
+        })
+        .then(
+          () => next(new ApiError(403, 'forbidden', 'This account may not use this resource.')),
+          next
+        );
       return;
     }
-    requireSession(...rule.roles)(req, res, next);
+    requireSession(...rule.roles)(req, res, (err) => {
+      if (!(err instanceof ApiError) || err.status !== 403) {
+        next(err);
+        return;
+      }
+      audit
+        .record({
+          ...requestContext(req),
+          action: `${rule.resource}.${rule.action}`,
+          targetType: rule.resource,
+          targetId: targetIdOf(rule, req.path),
+          outcome: 'denied',
+          reason: 'role_not_allowed',
+        })
+        .then(() => next(err), next);
+    });
   };
 }
 

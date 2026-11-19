@@ -8,6 +8,7 @@ const { createHealthRouter } = require('./http/health');
 const { createAuth } = require('./auth');
 const { createAuthzGate } = require('./authz/gate');
 const { createCare } = require('./care');
+const { createAudit } = require('./audit');
 
 const DEFAULT_RATE_LIMIT = { windowMs: 60 * 1000, limit: 120 };
 const JSON_BODY_LIMIT = '100kb';
@@ -18,13 +19,15 @@ const JSON_BODY_LIMIT = '100kb';
 // limit sees the client IP instead of the proxy IP. `auth` holds the sign-in
 // settings. When it is missing or disabled, the /auth routes and the protected
 // routes are not mounted. `careStore` replaces the SQL store for appointments
-// and consultations, which tests do.
+// and consultations, which tests do. `auditStore` replaces the SQL store for
+// the audit log, which tests do.
 function createApp({
   db,
   rateLimit: rateOptions = {},
   trustProxy = 0,
   auth: authOptions,
   careStore,
+  auditStore,
   logger = console,
 } = {}) {
   if (!db) {
@@ -50,13 +53,16 @@ function createApp({
   );
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
   if (authOptions && authOptions.config && authOptions.config.enabled) {
-    const auth = createAuth({ ...authOptions, db, logger });
+    const audit = createAudit({ db, store: auditStore });
+    const auth = createAuth({ ...authOptions, db, logger, audit });
     app.locals.auth = auth;
     app.use(auth.router);
     // Everything after this point is protected. The gate answers 403 for any
     // route that has no rule, so a new route is closed until a rule opens it.
-    app.use(createAuthzGate({ requireSession: auth.requireSession }));
-    app.use(createCare({ db, store: careStore }).router);
+    app.use(createAuthzGate({ requireSession: auth.requireSession, audit }));
+    app.use(createCare({ db, store: careStore, audit }).router);
+    // The audit router comes last. Its only route is GET /audit, which the gate admits for auditors.
+    app.use(audit.router);
   }
   app.use(notFound);
   app.use(createErrorHandler({ logger }));

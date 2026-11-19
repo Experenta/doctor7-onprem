@@ -33,7 +33,18 @@ const TABLE_SPECS = [
   },
   {
     table: 'audit_log',
-    columns: ['id', 'actor_id', 'action', 'target_type', 'target_id', 'occurred_at'],
+    columns: [
+      'id',
+      'actor_id',
+      'center_id',
+      'action',
+      'target_type',
+      'target_id',
+      'outcome',
+      'reason',
+      'ip',
+      'occurred_at',
+    ],
   },
 ];
 

@@ -47,6 +47,7 @@ const USERS = [
   person('u-adm0', 'admin', null),
 ];
 const CENTER_OF = new Map(USERS.map((user) => [user.id, user.centerId]));
+const ROLE_OF = new Map(USERS.map((user) => [user.id, user.role]));
 
 const appointment = (id, centerId, professionalId, clientId) => ({
   id,
@@ -162,23 +163,24 @@ test('GET /appointments/:id allows participants and the center admin only', asyn
   const { server, call } = await setup();
   t.after(() => server.close());
   const expectations = [
-    // [user, appointment, status]
+    // [user, appointment, status]. A 404 covers another center, a missing record,
+    // and a record the caller does not take part in. An auditor gets 403 from the gate.
     ['u-pro1', 'a1', 200],
     ['u-cli1', 'a1', 200],
     ['u-adm1', 'a1', 200],
     ['u-adm1', 'a2', 200],
-    ['u-pro1', 'a2', 403],
-    ['u-pro1b', 'a1', 403],
-    ['u-cli1', 'a2', 403],
-    ['u-cli1b', 'a1', 403],
+    ['u-pro1', 'a2', 404],
+    ['u-pro1b', 'a1', 404],
+    ['u-cli1', 'a2', 404],
+    ['u-cli1b', 'a1', 404],
     ['u-aud1', 'a1', 403],
-    ['u-adm0', 'a1', 403],
-    ['u-adm1', 'a3', 403],
-    ['u-pro1', 'a3', 403],
-    ['u-cli1', 'a3', 403],
-    ['u-adm2', 'a1', 403],
-    ['u-pro2', 'a1', 403],
-    ['u-cli2', 'a1', 403],
+    ['u-adm0', 'a1', 404],
+    ['u-adm1', 'a3', 404],
+    ['u-pro1', 'a3', 404],
+    ['u-cli1', 'a3', 404],
+    ['u-adm2', 'a1', 404],
+    ['u-pro2', 'a1', 404],
+    ['u-cli2', 'a1', 404],
     ['u-pro2', 'a3', 200],
     ['u-adm2', 'a3', 200],
   ];
@@ -266,18 +268,21 @@ test('POST /consultations: only the professional of the appointment may create',
   assert.deepEqual(careStore.consultationsById.get(created.json.id).body, { note: 'synthetic' });
 
   const before = careStore.consultationsById.size;
+  // [user, appointment, status]. The gate admits only the professional role on this route,
+  // so every other role gets 403 before the record is looked at. A professional who cannot
+  // read the appointment gets 404. A professional who can read it may always create on it.
   const denied = [
-    ['u-pro1', 'a2'],
-    ['u-pro1', 'a3'],
-    ['u-pro2', 'a1'],
-    ['u-cli1', 'a1'],
-    ['u-adm1', 'a1'],
-    ['u-adm2', 'a1'],
-    ['u-aud1', 'a1'],
-    ['u-adm0', 'a1'],
+    ['u-pro1', 'a2', 404],
+    ['u-pro1', 'a3', 404],
+    ['u-pro2', 'a1', 404],
+    ['u-cli1', 'a1', 403],
+    ['u-adm1', 'a1', 403],
+    ['u-adm2', 'a1', 403],
+    ['u-aud1', 'a1', 403],
+    ['u-adm0', 'a1', 403],
   ];
-  for (const [as, id] of denied) {
-    assert.equal((await call('POST', '/consultations', { as, body: body(id) })).status, 403, `${as} on ${id}`);
+  for (const [as, id, status] of denied) {
+    assert.equal((await call('POST', '/consultations', { as, body: body(id) })).status, status, `${as} on ${id}`);
   }
   assert.equal(careStore.consultationsById.size, before);
   assert.equal((await call('POST', '/consultations', { body: body('a1') })).status, 401);
@@ -295,16 +300,16 @@ test('GET /consultations/:id allows the participants and the center admin only',
     ['u-cli1', 'k1', 200],
     ['u-adm1', 'k1', 200],
     ['u-adm1', 'k2', 200],
-    ['u-pro1', 'k2', 403],
-    ['u-cli1', 'k2', 403],
-    ['u-pro1b', 'k1', 403],
-    ['u-cli1b', 'k1', 403],
+    ['u-pro1', 'k2', 404],
+    ['u-cli1', 'k2', 404],
+    ['u-pro1b', 'k1', 404],
+    ['u-cli1b', 'k1', 404],
     ['u-aud1', 'k1', 403],
-    ['u-adm0', 'k1', 403],
-    ['u-adm1', 'k3', 403],
-    ['u-pro2', 'k1', 403],
-    ['u-cli2', 'k1', 403],
-    ['u-adm2', 'k1', 403],
+    ['u-adm0', 'k1', 404],
+    ['u-adm1', 'k3', 404],
+    ['u-pro2', 'k1', 404],
+    ['u-cli2', 'k1', 404],
+    ['u-adm2', 'k1', 404],
     ['u-aud2', 'k3', 403],
     ['u-pro2', 'k3', 200],
     ['u-cli2', 'k3', 200],
@@ -324,7 +329,6 @@ test('a route without a rule answers 403, signed in or not', async (t) => {
   t.after(() => server.close());
   const unruled = [
     ['GET', '/no-such-route'],
-    ['GET', '/audit'],
     ['GET', '/appointments/'],
     ['GET', '/Appointments'],
     ['GET', '/appointments/a1/consultations'],
@@ -452,7 +456,9 @@ test('property: nobody reads an appointment or consultation of another center', 
           assert.equal(CENTER_OF.get(as), centers.get(id), `${as} read ${kind}/${id} of another center`);
           assert.equal(res.json.id, id);
         } else if (centers.has(id) && CENTER_OF.get(as) !== centers.get(id)) {
-          assert.equal(res.status, 403);
+          // Another center answers exactly like a missing record. An auditor is refused
+          // by the route rule first, so it gets 403 for every id.
+          assert.equal(res.status, ROLE_OF.get(as) === 'auditor' ? 403 : 404);
         }
         assert.ok([200, 400, 403, 404].includes(res.status), `unexpected status ${res.status}`);
       }

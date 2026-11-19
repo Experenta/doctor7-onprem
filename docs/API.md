@@ -45,6 +45,7 @@ appointment and consultation endpoints exist. The access rules are in
 | POST | `/appointments` | `professional`, `admin` | Creates an appointment in the caller's center. |
 | POST | `/consultations` | `professional` | Creates a consultation for an appointment of the caller. |
 | GET | `/consultations/:id` | `professional`, `client`, `admin` | Reads one consultation. |
+| GET | `/audit` | `auditor` | Lists audit entries of the caller's center. |
 
 Every route not listed here answers `403`. The role column says which roles can
 reach the route. The record itself is checked as well: a professional and a
@@ -246,9 +247,11 @@ user without a center.
 ### GET /appointments/:id
 
 Roles: `professional`, `client`, `admin`. Response `200` with the appointment.
-`404 not_found` when the id does not exist. `403 forbidden` when the caller may
-not read it, for example another center or an appointment of another
-professional.
+`404 not_found` when the id does not exist, and also when the caller may not read
+the appointment, for example one of another center or one the caller does not take
+part in. The two cases return the same body, so a caller cannot tell whether an id
+exists in another center. The audit log keeps the real reason. An `auditor` gets
+`403 forbidden` for every id, because the route does not admit that role.
 
 ### POST /appointments
 
@@ -290,13 +293,68 @@ curl -i -X POST http://127.0.0.1:3000/consultations \
 }
 ```
 
-Errors: `400 invalid_request`, `403 forbidden`, `404 not_found` when the
-appointment does not exist.
+Errors: `400 invalid_request`, `404 not_found` when the appointment does not exist
+or the caller may not read it, and `403 forbidden` for a caller who may read the
+appointment but may not create a consultation on it. A `client` or an `admin`
+sends the request to a route that does not admit their role, so they also get
+`403`, whatever the appointment id is.
 
 ### GET /consultations/:id
 
 Roles: `professional` and `client` of the appointment, and `admin` of its center.
-Response `200` with the consultation. Errors: `403 forbidden`, `404 not_found`.
+Response `200` with the consultation. `404 not_found` when the consultation does
+not exist or the caller may not read it. The body is the same for both cases. An
+`auditor` gets `403 forbidden`. A successful read is written to the audit log
+without the body (see `docs/AUDIT.md`).
+
+### GET /audit
+
+Roles: `auditor`. Lists the audit entries of the auditor's center, newest first.
+Each entry records one event, such as a sign-in, a read of a consultation, or a
+refused request. No entry contains clinical text. See `docs/AUDIT.md` for the
+actions and reason codes.
+
+Query parameters, all optional:
+
+| Parameter | Meaning |
+|---|---|
+| `from`, `to` | ISO 8601 UTC instants, such as `2026-11-01T00:00:00.000Z`. `from` must not be after `to`. |
+| `actorId` | Entries of one user. |
+| `action` | Exact action name, such as `consultation.read`. |
+| `outcome` | `success`, `denied`, or `failure`. |
+| `limit` | Default 50, maximum 200. |
+| `offset` | Default 0. |
+
+```sh
+curl -i 'http://127.0.0.1:3000/audit?outcome=denied&limit=20' \
+  -b 'd7_session=<token>'
+```
+
+Response `200`:
+
+```json
+{
+  "items": [
+    {
+      "id": "7a1c2e3f-4b5d-4e6f-8a9b-0c1d2e3f4a5b",
+      "occurredAt": "2026-11-19T03:26:00.123Z",
+      "actorId": "u-luis",
+      "centerId": "center-1",
+      "action": "consultation.read",
+      "targetType": "consultation",
+      "targetId": "0d3c1f52-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+      "outcome": "denied",
+      "reason": "not_participant",
+      "ip": "127.0.0.1"
+    }
+  ]
+}
+```
+
+`actorId`, `centerId`, `targetId`, and `reason` are `null` when they do not apply.
+Errors: `400 invalid_request` for a bad parameter or for `from` after `to`. `403
+forbidden` for any role other than `auditor`, and for an auditor without a center.
+`401 unauthenticated` without a live session.
 
 ## Error codes
 
@@ -309,7 +367,7 @@ Response `200` with the consultation. Errors: `403 forbidden`, `404 not_found`.
 | 401 | `login_failed` | Sign-in did not complete. See `/auth/callback`. |
 | 403 | `access_denied` | The verified email has no account in `users`. |
 | 403 | `forbidden` | The signed-in role or account may not use this resource, or the route has no rule. |
-| 404 | `not_found` | No route matches the path, or the record does not exist. |
+| 404 | `not_found` | No route matches the path, or the record does not exist or is not readable by the caller. |
 | 413 | `payload_too_large` | The request body is larger than 100 KB. |
 | 415 | `unsupported_media_type` | A `POST`, `PUT`, or `PATCH` to a protected route was not sent as `application/json`. |
 | 429 | `rate_limited` | The client exceeded the rate limit. |
