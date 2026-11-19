@@ -1,10 +1,13 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+const SRC = join(import.meta.dirname, '..');
 const tokens = readFileSync(join(import.meta.dirname, 'tokens.css'), 'utf8');
 const css = readFileSync(join(import.meta.dirname, 'app.css'), 'utf8');
-const mainSource = readFileSync(join(import.meta.dirname, '..', 'main.jsx'), 'utf8');
+const mainSource = readFileSync(join(SRC, 'main.jsx'), 'utf8');
+
+// ---------- Reading the tokens ----------
 
 function token(name) {
   const match = tokens.match(new RegExp(`--${name}:\\s*([^;]+);`));
@@ -12,10 +15,23 @@ function token(name) {
   return match[1].trim();
 }
 
+// Follows var(--other) until a value that is not a reference.
+function resolve(name) {
+  const value = token(name);
+  const ref = value.match(/^var\(--([\w-]+)\)$/);
+  return ref ? resolve(ref[1]) : value;
+}
+
+const c = (name) => {
+  const value = resolve(`color-${name}`).toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(value)) throw new Error(`color-${name} is not a six-digit hex: ${value}`);
+  return value;
+};
+
 function luminance(hex) {
   const value = hex.replace('#', '');
   const channels = [0, 2, 4].map((i) => parseInt(value.slice(i, i + 2), 16) / 255);
-  const [r, g, b] = channels.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  const [r, g, b] = channels.map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
@@ -24,32 +40,99 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-const c = (name) => token(`color-${name}`);
+// The color halfway between two hex colors, for the middle of a gradient.
+function mix(a, b) {
+  const part = (hex, i) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  const channels = [0, 1, 2].map((i) => Math.round((part(a, i) + part(b, i)) / 2));
+  return `#${channels.map((x) => x.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// ---------- Reading the rules of app.css ----------
+
+const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
+const rules = [...stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({
+  selectors: selector
+    .split(',')
+    .map((part) => part.trim().replace(/^@media[^{]*\{\s*/, ''))
+    .filter(Boolean),
+  body,
+}));
+
+const rulesFor = (selector) => rules.filter((rule) => rule.selectors.includes(selector));
+const declares = (rule, pattern) => pattern.test(rule.body);
+
+// True when a rule for the selector sets a height of at least 2.75rem.
+function hasTouchTarget(selector) {
+  return rulesFor(selector).some((rule) => {
+    const match = rule.body.match(/(?:min-)?height:\s*([^;]+);/);
+    if (!match) return false;
+    const value = match[1].trim();
+    return value === 'var(--target)' || (value.endsWith('rem') && parseFloat(value) >= 2.75);
+  });
+}
+
+function sourceFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? sourceFiles(path) : [path];
+  });
+}
 
 describe('theme tokens', () => {
-  it('holds the brief palette', () => {
-    expect(c('heading').toLowerCase()).toBe('#5e60ce');
-    expect(c('primary')).toBe('#7400b8');
-    expect(c('primary-border')).toBe('#bca5eb');
-    expect(c('secondary')).toBe('#9278c5');
-    expect(c('secondary-surface')).toBe('#7f45d9');
-    expect(c('now')).toBe('#7a5cff');
-    expect(token('gradient-main')).toBe('linear-gradient(49deg, #7400b8 33%, #33bfe9 100%)');
-    expect(token('gradient-button')).toBe('linear-gradient(90deg, #8161f3, #4da4ff)');
-    expect(token('stat-1')).toContain('#fe69a5');
-    expect(token('stat-1')).toContain('#ff875e');
-    expect(token('stat-2')).toContain('#5e72e4');
-    expect(token('stat-2')).toContain('#8e70ee');
-    expect(token('stat-3')).toContain('#119bd2');
-    expect(token('stat-3')).toContain('#3ad0bf');
-    expect(token('stat-4')).toContain('#8362f7');
-    expect(token('stat-4')).toContain('#ee70e9');
+  it('holds the palette of the brief', () => {
+    expect(c('purple-950')).toBe('#1E0F52');
+    expect(c('purple-900')).toBe('#2A1466');
+    expect(c('purple-700')).toBe('#482494');
+    expect(c('purple-500')).toBe('#6E4FC9');
+    expect(c('purple-100')).toBe('#ECE7F8');
+    expect(c('purple-50')).toBe('#F6F4FC');
+    expect(c('turquoise-500')).toBe('#18E4DC');
+    expect(c('turquoise-700')).toBe('#0A8E88');
+    expect(c('turquoise-100')).toBe('#DDFBF9');
+    expect(c('on-turquoise')).toBe('#0B2A28');
+    expect(c('magenta-600')).toBe('#D800B0');
+    expect(c('magenta-100')).toBe('#FBE1F6');
+    expect(c('ink')).toBe('#1B1535');
+    expect(c('ink-muted')).toBe('#5C5778');
+    expect(c('line')).toBe('#E4DFF2');
+    expect(c('white')).toBe('#FFFFFF');
+  });
+
+  it('defines each token once, and each palette color once', () => {
+    const definitions = [...tokens.matchAll(/^\s*(--[\w-]+):\s*([^;]+);/gm)].map(([, name, value]) => ({
+      name,
+      value: value.trim(),
+    }));
+    const names = definitions.map((entry) => entry.name);
+    expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
+    const hexes = definitions.filter((entry) => /^#[0-9A-Fa-f]{6}$/.test(entry.value)).map((entry) => entry.value.toUpperCase());
+    expect(hexes.filter((hex, index) => hexes.indexOf(hex) !== index)).toEqual([]);
+  });
+
+  it('defines the brand gradient from purple 700 to magenta 600 at 135 degrees', () => {
+    expect(token('gradient-brand')).toBe(
+      'linear-gradient(135deg, var(--color-purple-700), var(--color-magenta-600))',
+    );
   });
 
   it('keeps every color in tokens.css', () => {
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(css).not.toMatch(/rgba?\(/);
     expect(css).not.toMatch(/hsla?\(/);
+    const code = sourceFiles(SRC).filter((path) => /\.(jsx?|html)$/.test(path) && !/\.test\./.test(path));
+    for (const path of code) {
+      const text = readFileSync(path, 'utf8');
+      expect(text, path).not.toMatch(/#[0-9a-fA-F]{6}\b/);
+      expect(text, path).not.toMatch(/\bstyle=\{\{/);
+    }
+  });
+
+  it('keeps the brand gradient to the welcome band and the sign-in panel', () => {
+    const users = rules.filter((rule) => rule.body.includes('--gradient-brand'));
+    expect(users.flatMap((rule) => rule.selectors).sort()).toEqual(['.login-band', '.welcome-band']);
+    // The only other gradient is the loading shimmer, which has no brand colors.
+    const others = rules.filter((rule) => /linear-gradient/.test(rule.body));
+    expect(others.flatMap((rule) => rule.selectors)).toEqual(['.skeleton-block']);
   });
 });
 
@@ -58,80 +141,176 @@ describe('text contrast (4.5:1)', () => {
     ['ink', 'bg'],
     ['ink', 'surface'],
     ['ink', 'surface-muted'],
+    ['ink', 'turquoise-100'],
+    ['ink', 'magenta-100'],
+    ['ink', 'line'],
     ['ink-muted', 'bg'],
     ['ink-muted', 'surface'],
     ['ink-muted', 'surface-muted'],
-    ['heading', 'surface'],
+    ['ink-muted', 'turquoise-100'],
     ['heading', 'bg'],
-    ['primary', 'surface'],
+    ['heading', 'surface'],
+    ['heading', 'surface-muted'],
+    ['heading', 'line'],
     ['primary', 'bg'],
+    ['primary', 'surface'],
     ['primary', 'surface-muted'],
-    ['primary', 'line'],
+    ['primary-hover', 'surface-muted'],
+    ['purple-700', 'white'],
+    ['purple-700', 'purple-100'],
+    ['purple-900', 'purple-100'],
     ['on-primary', 'primary'],
-    ['on-primary-muted', 'primary'],
-    ['on-primary', 'secondary-surface'],
-    ['danger', 'surface'],
-    ['danger', 'danger-surface'],
-    ['success', 'success-surface'],
-    ['ink', 'success-surface'],
+    ['on-primary', 'primary-hover'],
+    ['white', 'purple-950'],
+    ['white', 'purple-900'],
+    ['white', 'purple-700'],
+    ['on-dark-muted', 'purple-950'],
+    ['on-dark-muted', 'purple-900'],
+    ['turquoise-500', 'purple-950'],
+    ['turquoise-500', 'purple-900'],
+    ['turquoise-500', 'purple-700'],
+    ['on-turquoise', 'turquoise-500'],
+    ['turquoise-800', 'surface'],
+    ['turquoise-800', 'bg'],
+    ['turquoise-800', 'turquoise-100'],
+    ['success-text', 'success-surface'],
+    ['magenta-800', 'surface'],
+    ['magenta-800', 'bg'],
+    ['magenta-800', 'magenta-100'],
+    ['danger-text', 'danger-surface'],
+    ['white', 'magenta-600'],
+    ['on-gradient', 'purple-700'],
+    ['on-gradient', 'magenta-600'],
     ['selection-text', 'selection-bg'],
   ];
   it.each(pairs)('%s on %s', (fg, bg) => {
     expect(contrast(c(fg), c(bg))).toBeGreaterThanOrEqual(4.5);
   });
+
+  it('keeps white text readable on the whole brand gradient', () => {
+    const middle = mix(c('purple-700'), c('magenta-600'));
+    expect(contrast(c('on-gradient'), middle)).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
-describe('graphics contrast (3:1)', () => {
-  it('keeps stat icons readable on every stop of the four pairs', () => {
-    for (const name of ['stat-1', 'stat-2', 'stat-3', 'stat-4']) {
-      const stops = token(name).match(/#[0-9a-fA-F]{6}/g);
-      expect(stops).toHaveLength(2);
-      for (const stop of stops) expect(contrast(c('on-stat'), stop)).toBeGreaterThanOrEqual(3);
+describe('turquoise rules', () => {
+  it('is far too light to be text on a light surface', () => {
+    expect(contrast(c('turquoise-500'), c('white'))).toBeLessThan(2);
+    expect(contrast(c('turquoise-500'), c('bg'))).toBeLessThan(2);
+  });
+
+  it('is text or an icon only on dark purple', () => {
+    const asText = rules.filter((rule) => declares(rule, /(?:^|[;\s])color:\s*var\(--color-turquoise-500\)/));
+    expect(asText.flatMap((rule) => rule.selectors).sort()).toEqual([
+      '.logotype-seven',
+      ".side-link[aria-current='page'] .icon",
+    ]);
+  });
+
+  it('is a fill with the dark text on turquoise', () => {
+    for (const selector of ['.avatar-turquoise', '.stat-icon-turquoise']) {
+      const rule = rulesFor(selector)[0];
+      expect(rule.body).toMatch(/background:\s*var\(--color-turquoise-500\)/);
+      expect(rule.body).toMatch(/color:\s*var\(--color-on-turquoise\)/);
     }
   });
 
-  it('keeps focus rings and control borders visible', () => {
-    expect(contrast(c('focus'), c('surface'))).toBeGreaterThanOrEqual(3);
-    expect(contrast(c('focus'), c('bg'))).toBeGreaterThanOrEqual(3);
-    expect(contrast(c('secondary'), c('surface'))).toBeGreaterThanOrEqual(3);
+  it('does not carry small text in turquoise 700, which is about 4:1 on white', () => {
+    expect(contrast(c('turquoise-700'), c('white'))).toBeLessThan(4.5);
+    expect(contrast(c('turquoise-700'), c('white'))).toBeGreaterThanOrEqual(3);
+    const asText = rules.filter((rule) => declares(rule, /(?:^|[;\s])color:\s*var\(--color-turquoise-700\)/));
+    expect(asText).toEqual([]);
   });
 });
 
-describe('css rules', () => {
-  it('has no gradient text, glass, or wide colored side borders', () => {
-    expect(css).not.toMatch(/background-clip:\s*text/);
-    expect(css).not.toMatch(/text-fill-color/);
-    expect(css).not.toMatch(/backdrop-filter/);
-    expect(css).not.toMatch(/filter:\s*blur/);
-    expect(css).not.toMatch(/border-(left|right|inline-start|inline-end)\s*:/);
+describe('graphics contrast (3:1)', () => {
+  const pairs = [
+    ['focus', 'surface'],
+    ['focus', 'bg'],
+    ['focus', 'surface-muted'],
+    ['focus', 'turquoise-100'],
+    ['focus-on-dark', 'purple-950'],
+    ['focus-on-dark', 'purple-900'],
+    ['white', 'purple-700'],
+    ['white', 'magenta-600'],
+    ['control-border', 'surface'],
+    ['control-border', 'bg'],
+    ['turquoise-700', 'surface'],
+    ['turquoise-700', 'turquoise-100'],
+    ['turquoise-700', 'surface-muted'],
+    ['purple-500', 'surface'],
+    ['ink-muted', 'surface'],
+    ['on-dark-muted', 'purple-950'],
+    ['turquoise-500', 'purple-950'],
+    ['magenta-600', 'magenta-100'],
+  ];
+  it.each(pairs)('%s on %s', (fg, bg) => {
+    expect(contrast(c(fg), c(bg))).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('shape, type, and motion tokens', () => {
+  it('uses the radii of the brief', () => {
+    expect(token('radius-card')).toBe('16px');
+    expect(token('radius-control')).toBe('12px');
+    expect(token('radius-pill')).toBe('999px');
   });
 
-  it('uses soft shadows with a blur', () => {
-    const shadows = [...tokens.matchAll(/--shadow-[a-z]+:\s*(-?\d+)(?:px)?\s+(-?\d+)px\s+(\d+)px/g)];
-    expect(shadows.length).toBeGreaterThanOrEqual(2);
-    for (const [, , , blur] of shadows) expect(Number(blur)).toBeGreaterThanOrEqual(8);
-    expect(css).not.toMatch(/box-shadow:\s*-?\d+px\s+-?\d+px\s+0/);
+  it('has two soft shadow levels with offset and blur', () => {
+    const shadows = [...tokens.matchAll(/--shadow-([a-z]+):\s*(-?\d+)(?:px)?\s+(-?\d+)px\s+(\d+)px/g)];
+    expect(shadows.map((match) => match[1]).sort()).toEqual(['raised', 'soft']);
+    for (const [, , , offsetY, blur] of shadows) {
+      expect(Number(offsetY)).toBeGreaterThan(0);
+      expect(Number(blur)).toBeGreaterThanOrEqual(8);
+    }
   });
 
-  it('uses a fixed rem type scale and 44px targets', () => {
+  it('uses a fixed rem type scale with a ratio of 1.2, and 44px targets', () => {
     expect(css).not.toMatch(/clamp\(/);
-    expect(css).not.toMatch(/font-size:[^;]*v[wh]/);
+    expect(css).not.toMatch(/font-size:[^;]*v[wh]\b/);
     expect(token('target')).toBe('2.75rem');
     expect(token('measure')).toBe('70ch');
-    const sizes = ['text-sm', 'text-base', 'text-md', 'text-lg', 'text-xl'].map((n) => parseFloat(token(n)));
+    const sizes = ['text-sm', 'text-base', 'text-md', 'text-lg', 'text-xl', 'text-2xl', 'text-3xl'].map((name) =>
+      parseFloat(token(name)),
+    );
     for (let i = 1; i < sizes.length; i += 1) {
       const ratio = sizes[i] / sizes[i - 1];
-      expect(ratio).toBeGreaterThan(1.1);
+      expect(ratio).toBeGreaterThan(1.15);
       expect(ratio).toBeLessThan(1.25);
     }
   });
 
-  it('keeps motion between 150 and 250 ms and respects reduced motion', () => {
+  it('keeps motion between 150 and 200 ms', () => {
     const ms = parseInt(token('motion'), 10);
     expect(ms).toBeGreaterThanOrEqual(150);
-    expect(ms).toBeLessThanOrEqual(250);
-    expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
-    expect(css).not.toMatch(/@keyframes/);
+    expect(ms).toBeLessThanOrEqual(200);
+    expect(css).not.toMatch(/transition:\s*all\b/);
+  });
+});
+
+describe('css rules', () => {
+  it('has no gradient text, glass, or colored side borders', () => {
+    expect(css).not.toMatch(/background-clip:\s*text/);
+    expect(css).not.toMatch(/text-fill-color/);
+    expect(css).not.toMatch(/backdrop-filter/);
+    expect(css).not.toMatch(/filter:\s*blur/);
+    expect(css).not.toMatch(/border-(left|right|inline-start|inline-end)\b/);
+  });
+
+  it('uses soft shadows with a blur, never a hard offset shadow', () => {
+    expect(css).not.toMatch(/box-shadow:\s*-?\d+px\s+-?\d+px\s+0\s/);
+    expect(css).not.toMatch(/box-shadow:\s*-?\d+px\s+-?\d+px\s+0[;,]/);
+  });
+
+  it('animates only the loading shimmer and the waiting pulse, and stops both under reduced motion', () => {
+    const names = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((match) => match[1]).sort();
+    expect(names).toEqual(['pulse', 'shimmer']);
+    const used = [...css.matchAll(/(?:^|[;\s{])animation:\s*([\w-]+)/g)].map((match) => match[1]);
+    for (const name of used.filter((value) => value !== 'none')) expect(['pulse', 'shimmer']).toContain(name);
+    const reduced = css.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*$/);
+    expect(reduced).not.toBeNull();
+    expect(reduced[0]).toMatch(/animation:\s*none\s*!important/);
+    expect(reduced[0]).toMatch(/transition:\s*none\s*!important/);
   });
 
   it('styles what the browser draws', () => {
@@ -141,27 +320,74 @@ describe('css rules', () => {
     expect(css).toMatch(/tabular-nums/);
   });
 
+  it('draws a 3px focus ring', () => {
+    const ring = rulesFor(':focus-visible')[0];
+    expect(ring.body).toMatch(/outline:\s*3px solid/);
+  });
+
   it('has hover, active, disabled, busy, and invalid states on controls', () => {
     expect(css).toMatch(/\.btn-primary:hover/);
     expect(css).toMatch(/\.btn-primary:active/);
+    expect(css).toMatch(/\.btn-secondary:hover/);
     expect(css).toMatch(/\.btn:disabled/);
     expect(css).toMatch(/\.btn\[aria-busy='true'\]/);
     expect(css).toMatch(/\[aria-invalid='true'\]/);
+    expect(css).toMatch(/\.chip-filter\[aria-pressed='true'\]/);
+    expect(css).toMatch(/\.segmented-item\[aria-pressed='true'\]/);
   });
 
-  it('stacks tables and collapses navigation on narrow screens', () => {
+  it('keeps every control at 44px or more', () => {
+    const selectors = [
+      '.btn',
+      '.chip-filter',
+      '.segmented-item',
+      '.side-link',
+      '.signout',
+      '.quick-action',
+      '.mini-link',
+      '.week-item',
+      '.input',
+      '.brand',
+      '.appt-time',
+    ];
+    for (const selector of selectors) expect(hasTouchTarget(selector), selector).toBe(true);
+  });
+
+  it('stacks tables under 720px, and moves the navigation to the bottom under 960px', () => {
     expect(css).toMatch(/max-width:\s*719px/);
     expect(css).toMatch(/attr\(data-label\)/);
-    expect(css).toMatch(/\.nav-toggle/);
+    expect(css).toMatch(/min-width:\s*960px/);
+    expect(rulesFor('.side-nav')[0].body).toMatch(/position:\s*fixed/);
+    expect(rulesFor('.side-nav')[0].body).toMatch(/bottom:\s*0/);
+  });
+
+  it('puts the active indicator on the navigation, in turquoise', () => {
+    const indicator = rulesFor(".side-link[aria-current='page']::before")[0];
+    expect(indicator.body).toMatch(/background:\s*var\(--color-turquoise-500\)/);
   });
 });
 
 describe('fonts', () => {
-  it('come from @fontsource latin subsets', () => {
+  it('come from @fontsource latin subsets, in the weights of the brief', () => {
     expect(mainSource).toMatch(/@fontsource\/lato\/latin-400\.css/);
-    expect(mainSource).toMatch(/@fontsource\/montserrat\/latin-400\.css/);
+    expect(mainSource).toMatch(/@fontsource\/lato\/latin-700\.css/);
+    expect(mainSource).toMatch(/@fontsource\/montserrat\/latin-700\.css/);
     expect(mainSource).toMatch(/@fontsource\/montserrat\/latin-800\.css/);
+    expect(mainSource).not.toMatch(/montserrat\/latin-(400|500|600)\.css/);
     expect(token('font-heading')).toMatch(/^'Montserrat'/);
     expect(token('font-body')).toMatch(/^'Lato'/);
+  });
+
+  it('use only the weights that are loaded', () => {
+    const weights = [...css.matchAll(/font-weight:\s*(\d+)/g)].map((match) => match[1]);
+    for (const weight of weights) expect(['400', '700', '800']).toContain(weight);
+  });
+
+  it('never asks a remote server for a font or an image, and holds no logo file', () => {
+    expect(css).not.toMatch(/url\(/);
+    expect(css).not.toMatch(/@import/);
+    const publicDir = join(SRC, '..', 'public');
+    const files = [...sourceFiles(SRC), ...(existsSync(publicDir) ? sourceFiles(publicDir) : [])];
+    expect(files.filter((path) => /\.(png|jpe?g|gif|webp|svg|ico|avif)$/i.test(path))).toEqual([]);
   });
 });

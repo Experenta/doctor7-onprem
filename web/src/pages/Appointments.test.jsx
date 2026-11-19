@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { appointment, fail, never, ok, renderApp } from '../test/helpers.jsx';
@@ -16,7 +16,8 @@ describe('Appointments list', () => {
     const link = await screen.findByRole('link', { name: /Dec 2, 2026, 5:00\sAM\sGMT-5/ });
     expect(link).toHaveAttribute('href', '/appointments/a1');
     expect(screen.getByText(/Dec 2, 2026, 5:50\sAM\sGMT-5/)).toBeInTheDocument();
-    expect(screen.getByText('Scheduled')).toBeInTheDocument();
+    // The filter chip has the same word, so the status is looked up inside the table.
+    expect(within(screen.getByRole('table')).getByText('Scheduled')).toBeInTheDocument();
     expect(link.closest('td')).toHaveAttribute('data-label', 'Starts');
   });
 

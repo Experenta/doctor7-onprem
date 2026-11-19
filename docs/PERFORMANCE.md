@@ -72,6 +72,40 @@ Lazy loading moved each screen into its own file, with a gzip size between 0.9 k
 DOM, so a larger reduction needs a decision about the libraries. That decision is not
 part of this task.
 
+#### K-30, frontend v2
+
+K-30 rebuilt the look of the client: design tokens, the shell, the base components, Home by
+role, and Appointments. The figures below are the gzip sizes that the Vite build prints for
+`npm run build --workspace=web`, run in the K-30 worktree. The "before" column is the build of
+the base commit `1397de4` in the same worktree, so both columns come from one install and one
+machine. They are not the figures of the table above, which the PM measured in the VM. The base
+commit gave 148.29 kB there, not 86.40 kB. The cause was not investigated. The PM should repeat
+the measurement in the VM.
+
+| Output | Before | After | Change | Budget |
+| --- | --- | --- | --- | --- |
+| Initial JavaScript, gzip | 148.29 kB | 151.31 kB | +3.02 kB (+2.0%) | 200 KiB |
+| Initial JavaScript, raw | 484.36 kB | 497.03 kB | +12.67 kB | none |
+| Initial CSS, gzip | 3.29 kB | 5.75 kB | +2.46 kB (+75%) | 50 KiB |
+| Initial CSS, raw | 13.93 kB | 28.96 kB | +15.03 kB | none |
+| `Home` screen file, gzip | 1.20 kB | 3.79 kB | +2.59 kB | none |
+| `Appointments` screen file, gzip | 1.03 kB | 2.43 kB | +1.40 kB | none |
+
+- The JavaScript grew by 2.0%, inside the +25% that the task allows. The new base components,
+  icons, and illustrations are in the initial file. The two redesigned screens stay in their own
+  lazy files.
+- The CSS grew by 75%, which is above 25% in relative terms. In absolute terms it is 2.46 kB,
+  and the result is 11% of the 50 KiB CSS budget. The growth is the shell, the components, the
+  two redesigned screens, and the styles that K-31 still needs.
+- The build output holds 8 font files instead of 14: Montserrat 400, 500, and 600 are no longer
+  imported, because the brief uses 700 and 800. A browser only downloads the faces that the page
+  uses.
+- The budgets in `web/src/bundle-budget.test.js` did not change. The test passes with the
+  build above.
+- The bundle test reads the build with zlib at its default level, and Vite prints its own gzip
+  figure. This note gives only the Vite figures. The test output of this run did not print its
+  own figure.
+
 ### Load test
 
 `tests/carga/load.test.js` runs 120 requests with a concurrency of 4, against the

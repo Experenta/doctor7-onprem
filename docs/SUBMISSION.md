@@ -39,8 +39,8 @@ a service account, and Kiro.
 
 ## How we used Kiro
 
-Kiro CLI agents built the project. 29 tasks were given to Kiro agents: K-01 to K-29 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task
-had a written contract and its own branch. From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, and k-29. There is no folder for K-11, K-15, K-25, and K-27. The repository has steering files in `.kiro/steering/` and
+Kiro CLI agents built the project. 30 tasks were given to Kiro agents: K-01 to K-30 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task
+had a written contract and its own branch. From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none. The specifications in `.kiro/specs/` are for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, k-29, and k-30. There is no folder for K-11, K-15, K-25, and K-27. The repository has steering files in `.kiro/steering/` and
 two hook files in `.kiro/hooks/`. The hooks have not been tested in the Kiro IDE.
 
 A director agent, supervised by a person, reviewed each task. Before each pull request it ran
