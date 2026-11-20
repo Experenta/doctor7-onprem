@@ -183,13 +183,18 @@ test('the demo script adds up to 180 seconds or less, and its own numbers agree'
 
 // ---- The task count and the specification folders of the Kiro documents ----
 
-const TASK_COUNT = 37;
+const TASK_COUNT = 39;
 const TASK_SENTENCE =
-  '37 tasks were given to Kiro agents: K-01 to K-37 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19.';
+  '39 tasks were given to Kiro agents: K-01 to K-38 except K-15 (an internal document kept outside this repository), plus K-19b and K-37b, follow-ups to K-19 and K-37.';
 const SPEC_SENTENCE =
-  'From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none.';
+  'From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, K-27, and K-37b, which have none.';
 // Phrases that the documents must no longer contain.
-const OLD_PHRASES = ['numbered tasks', 'each task began by writing a specification', 'each task also began with a specification'];
+const OLD_PHRASES = [
+  'numbered tasks',
+  'each task began by writing a specification',
+  'each task also began with a specification',
+  'No MCP server was used',
+];
 const KIRO_DOCS = [
   { file: 'docs/HOW-WE-USED-KIRO.md', list: /holds specifications for ([^.]+)\./ },
   { file: 'docs/SUBMISSION.md', list: /specifications in `\.kiro\/specs\/` are for ([^.]+)\./ },
@@ -261,6 +266,66 @@ test('the implementer agent file is valid JSON with the agreed tools and command
 test('the Kiro documents name the implementer agent file', () => {
   for (const { file } of KIRO_DOCS) {
     assert.ok(read(file).includes(AGENT_FILE), `${file} must name ${AGENT_FILE}`);
+  }
+});
+
+// ---- The browser-checking agent and its verification record ----
+
+const UI_AGENT_FILE = '.kiro/agents/ui-checker.json';
+const UI_DOC = 'docs/UI-VERIFICATION.md';
+const UI_AGENT_TOOLS = ['fs_read', '@playwright'];
+// Browser tools that the checking agent must never be given.
+const UI_FORBIDDEN_TOOLS = [
+  'browser_evaluate',
+  'browser_run_code',
+  'browser_file_upload',
+  'browser_type',
+  'browser_fill_form',
+  'browser_press_key',
+];
+const UI_MCP_VERSION = '0.0.86';
+const MCP_SENTENCE =
+  "MCP was used once, after the build, by the project manager with the director's authorization, to let a Kiro agent verify the deployed UI in a headless browser (`docs/UI-VERIFICATION.md`). It was not used to write the code. The agent is restricted to the demo origin and to an explicit tool list (`.kiro/agents/ui-checker.json`).";
+
+function uiAgent() {
+  return JSON.parse(read(UI_AGENT_FILE));
+}
+
+test('the ui-checker agent file is valid JSON with the agreed tools and allowed tools', () => {
+  const agent = uiAgent();
+  assert.deepEqual(agent.tools, UI_AGENT_TOOLS, 'the tool list must be exactly fs_read and @playwright');
+  assert.ok(Array.isArray(agent.allowedTools) && agent.allowedTools.length > 0, 'the agent lists its allowed tools');
+  for (const tool of agent.allowedTools) {
+    assert.ok(
+      tool.startsWith('fs_read') || tool.startsWith('@playwright/browser_'),
+      `allowed tool "${tool}" is neither fs_read nor a @playwright/browser_ tool`
+    );
+    for (const forbidden of UI_FORBIDDEN_TOOLS) {
+      assert.ok(!tool.includes(forbidden), `allowed tool "${tool}" is forbidden`);
+    }
+  }
+});
+
+test('the ui-checker agent passes --allowed-origins with exactly the demo address and no other', () => {
+  const args = uiAgent().mcpServers.playwright.args;
+  const flagAt = args.indexOf('--allowed-origins');
+  assert.ok(flagAt >= 0, 'the arguments must contain --allowed-origins');
+  assert.equal(args.filter((arg) => arg === '--allowed-origins').length, 1, '--allowed-origins appears once');
+  assert.equal(args[flagAt + 1], DEMO_URL, '--allowed-origins must be exactly the demo address');
+  const otherAddresses = args.filter((arg) => /https?:\/\//i.test(arg) && arg !== DEMO_URL);
+  assert.deepEqual(otherAddresses, [], 'no other address may appear in the arguments');
+});
+
+test('the verification document exists and names the MCP version and the agent file', () => {
+  assert.ok(fs.existsSync(path.join(ROOT, UI_DOC)), `${UI_DOC} must exist`);
+  assert.ok(read(UI_DOC).includes(UI_MCP_VERSION), `${UI_DOC} must name version ${UI_MCP_VERSION}`);
+});
+
+test('the Kiro documents name the ui-checker agent file and state the MCP use', () => {
+  for (const { file } of KIRO_DOCS) {
+    const text = read(file);
+    assert.ok(text.includes(UI_AGENT_FILE), `${file} must name ${UI_AGENT_FILE}`);
+    assert.ok(text.includes(MCP_SENTENCE), `${file} must state the MCP sentence exactly`);
   }
 });
 
