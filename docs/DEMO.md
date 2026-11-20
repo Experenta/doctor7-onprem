@@ -10,7 +10,7 @@ the mock provider behind Apache, under the path `/idp/`. The API checks the
 provider's tokens in the same way it does in production.
 
 The demo data is synthetic. The accounts and records are invented. The data returns to
-the seed by hand (the Reset section) or every night (the Nightly reset section).
+the seed by hand (the Reset section). An optional timer can do this on a schedule, and it is disabled by default.
 
 ## Accounts
 
@@ -139,14 +139,14 @@ routing rule, so a request to `/idp/` is not answered with `index.html`.
 
 The provider keeps no state. Its codes and signing key live in memory, so a restart
 clears them. To reset the data by hand, load a new seed into an empty database, as
-`docs/MIGRATION.md` describes. To reset it every night, use the next section.
+`docs/MIGRATION.md` describes. A reset is manual unless the optional timer is enabled. For a scheduled run, see the optional timer in the next section.
 
 ## Nightly reset
 
 **Demo only. This erases data. Never enable it on a production server.**
 
-The package `doctor7-demo` holds a reset that returns the demo database to the synthetic seed. It is
-off until an administrator turns it on. The command is `seed/reset-demo.js`, installed as
+The package `doctor7-demo` holds a reset that returns the demo database to the synthetic seed. The timer is
+optional and disabled by default: the package installs it disabled and stopped, and an administrator turns it on. The command is `seed/reset-demo.js`, installed as
 `/usr/lib/doctor7/seed/reset-demo.js`. The service `doctor7-demo-reset.service` (a oneshot) runs it
 as the system user `doctor7-reset`. The timer `doctor7-demo-reset.timer` starts the service every day
 at 04:00 America/Bogota. A run missed while the host was off is not made up.

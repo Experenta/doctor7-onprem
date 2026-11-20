@@ -55,8 +55,12 @@ test('DEMO.md contains no public IP address', () => {
 
 test('DEMO.md states that the data is synthetic and says how a reset is done', () => {
   assert.match(demo, /synthetic/i);
+  // The manual reset always exists.
   assert.match(demo, /A reset is\s+manual/);
   assert.match(demo, /load a new seed/);
+  // The nightly timer is optional and off by default, so the document must say so.
+  assert.match(demo, /optional/i);
+  assert.match(demo, /disabled by default/i);
 });
 
 test('DEMO.md documents the /idp/ block of the example and why /idp is excluded from routing', () => {
