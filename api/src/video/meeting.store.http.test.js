@@ -115,7 +115,8 @@ test('a meeting stored with the older hyphenated room name is read back unchange
     const before = JSON.stringify(api.meetingStore.meetings.get('a1'));
     const read = await api.call('GET', MEETING, { as: 'u-cli1' });
     assert.equal(read.status, 200);
-    assert.deepEqual(read.json, { provider: 'jitsi', url: legacy });
+    // The server is set to Meet here, so a stored Jitsi meeting reads as a fallback (K-36).
+    assert.deepEqual(read.json, { provider: 'jitsi', url: legacy, fallback: true, simulated: false });
     assert.equal(JSON.stringify(api.meetingStore.meetings.get('a1')), before, 'the stored row is not changed');
     const again = await api.call('POST', MEETING, { as: 'u-pro1', body: {} });
     assert.equal(again.status, 200);

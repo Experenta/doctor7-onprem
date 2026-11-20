@@ -35,8 +35,23 @@ function readyState(meeting) {
   if (!url || !known) {
     return { status: 'error', meeting: null, message: UNSAFE_ADDRESS, retry: 'load' };
   }
-  return { status: 'ready', meeting: { provider: meeting.provider, url }, message: '', retry: null };
+  return {
+    status: 'ready',
+    meeting: { provider: meeting.provider, url, fallback: meeting.fallback === true, simulated: meeting.simulated === true },
+    message: '',
+    retry: null,
+  };
 }
+
+// The name of the provider that really created the meeting. "(fallback)" says that the server
+// is set to Meet and Jitsi took over. "(simulated)" is for the demo, where a simulator stands in
+// for Google. The API sets `simulated` only when it runs in demo mode.
+export function providerLabel(meeting) {
+  if (meeting.provider === 'jitsi') return meeting.fallback ? 'Jitsi (fallback)' : 'Jitsi';
+  return meeting.simulated ? 'Google Meet (simulated)' : 'Google Meet';
+}
+
+export const FALLBACK_NOTICE = 'Google Meet was not available, so this meeting was created in Jitsi.';
 
 // What a failed read means. A 404 is "no meeting yet": the page already loaded the
 // appointment, so the appointment is readable.
@@ -133,7 +148,7 @@ export default function VideoPanel({ appointmentId, canStart, appointmentStatus 
         <div className="card-head-chips">
           {status === 'ready' && (
             <Chip tone="dark" icon={VideoIcon}>
-              {meeting.provider === 'jitsi' ? 'Jitsi' : 'Google Meet'}
+              {providerLabel(meeting)}
             </Chip>
           )}
           {chip && (
@@ -143,6 +158,12 @@ export default function VideoPanel({ appointmentId, canStart, appointmentStatus 
           )}
         </div>
       </div>
+
+      {status === 'ready' && meeting.fallback && (
+        <p className="muted" role="status">
+          {FALLBACK_NOTICE}
+        </p>
+      )}
 
       <div className={stageClass}>
         {status === 'loading' && <Skeleton label="Loading the video meeting" />}

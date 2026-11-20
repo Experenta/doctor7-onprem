@@ -46,6 +46,8 @@ appointment and consultation endpoints exist. The access rules are in
 | POST | `/appointments` | `professional`, `admin` | Creates an appointment in the caller's center. |
 | POST | `/appointments/:id/meeting` | `professional` of the appointment | Creates the video meeting of an appointment, or returns the one that exists. See `docs/VIDEO.md`. |
 | GET | `/appointments/:id/meeting` | `professional` and `client` of the appointment | Reads the stored video meeting of an appointment. See `docs/VIDEO.md`. |
+| GET | `/demo/meet-outage` | `admin`, only with `DEMO_MODE=1` | Reads whether the simulated Google Meet outage is on. Demo only. See `docs/DEMO.md`. |
+| POST | `/demo/meet-outage` | `admin`, only with `DEMO_MODE=1` | Turns the simulated Google Meet outage on or off. Demo only. |
 | POST | `/consultations` | `professional` | Creates a consultation for an appointment of the caller. |
 | GET | `/consultations/:id` | `professional`, `client`, `admin` | Reads one consultation. |
 | GET (WebSocket upgrade) | `/ws?appointment=<id>` | `professional` and `client` of the appointment | Live chat of one appointment. See the Chat section. |
@@ -347,8 +349,16 @@ Response `201` (first call) or `200` (the meeting already exists), with
 `Cache-Control: no-store`:
 
 ```json
-{"provider":"jitsi","url":"https://jitsi.example.test/doctor70f1e2d3c4b5a69788796a5b4c3d2e1f0"}
+{"provider":"jitsi","url":"https://jitsi.example.test/doctor70f1e2d3c4b5a69788796a5b4c3d2e1f0","fallback":false,"simulated":false}
 ```
+
+`fallback` is `true` when `VIDEO_PROVIDER` is `meet` and the meeting is stored with
+`provider` `jitsi`, so Jitsi took over from Meet. It comes from the configuration, not from the
+database: a Jitsi meeting stored while the server is set to `jitsi` has `fallback: false`, and
+the same stored meeting reads `true` after the server is set to `meet`. `simulated` is `true`
+only when the API runs with `DEMO_MODE=1` and the meeting is stored with `provider` `meet`,
+because the demo uses a simulator in place of Google. A server without `DEMO_MODE` always
+answers `simulated: false`. Both fields are also in the `GET` answer.
 
 `provider` is the provider that really created the meeting. It is `jitsi` when
 `VIDEO_PROVIDER` is `jitsi`, and also when it is `meet` but Meet failed (error,
@@ -377,7 +387,7 @@ curl -i http://127.0.0.1:3000/appointments/5b0f6c9e-2d1a-4a56-9d0e-0a1b2c3d4e5f/
 Response `200`, with `Cache-Control: no-store`, the same body as the `POST`:
 
 ```json
-{"provider":"jitsi","url":"https://jitsi.example.test/doctor70f1e2d3c4b5a69788796a5b4c3d2e1f0"}
+{"provider":"jitsi","url":"https://jitsi.example.test/doctor70f1e2d3c4b5a69788796a5b4c3d2e1f0","fallback":false,"simulated":false}
 ```
 
 This is how the client enters the room that the professional started.
@@ -445,6 +455,56 @@ Response `200`:
 Errors: `400 invalid_request` for a bad parameter or for `from` after `to`. `403
 forbidden` for any role other than `auditor`, and for an auditor without a center.
 `401 unauthenticated` without a live session.
+
+## Demo-only Meet outage switch
+
+These two routes exist only when the API starts with `DEMO_MODE=1`. Without it, the gate
+holds no rule for `/demo/meet-outage`, so the path answers `403` like any path without a
+rule, signed in or not, and the API never contacts the simulator. A production server does
+not set `DEMO_MODE`. See `docs/DEMO.md`.
+
+### GET /demo/meet-outage
+
+Roles: `admin`. The gate admits every role. The handler answers `404 not_found` to the
+others, with the same body as a missing record, and writes `demo.read` with outcome
+`denied`. `401` without a session.
+
+```sh
+curl -i http://127.0.0.1:3000/demo/meet-outage -b 'd7_session=<token>'
+```
+
+Response `200`, with `Cache-Control: no-store`:
+
+```json
+{"meetOutage":false}
+```
+
+`meetOutage` is `true` while the simulator answers `500` to the Meet endpoint. The value comes
+from the simulator on each call. `502 demo_simulator_unavailable` when the simulator does
+not answer.
+
+### POST /demo/meet-outage
+
+Roles: `admin` only. Every other role gets `403 forbidden` from the gate, and the refusal is
+audited as `demo.update`. The body is exactly one boolean, sent as `application/json`.
+The usual `Origin` check and the write rate limit apply.
+
+```sh
+curl -i -X POST http://127.0.0.1:3000/demo/meet-outage \
+  -H 'Content-Type: application/json' \
+  -b 'd7_session=<token>' \
+  -d '{"meetOutage":true}'
+```
+
+Response `200`: `{"meetOutage":true}`. The simulator then answers `500` to the next meeting
+creation, so the meeting is created in Jitsi (see `docs/VIDEO.md`). `{"meetOutage":false}`
+restores the normal answer. Setting the same state twice is allowed.
+
+Errors: `400 invalid_request` for a missing field, a field that is not a boolean, or any
+other field. `415` for a body that is not JSON. `403 csrf_rejected` for a foreign `Origin`.
+`429` over the write limit. `502 demo_simulator_unavailable` when the simulator does not
+answer, or refuses the shared secret. Each change writes `demo.meet_outage_on` or
+`demo.meet_outage_off` to the audit log (see `docs/AUDIT.md`).
 
 ## Chat (WebSocket)
 
@@ -576,3 +636,4 @@ the number of deleted messages. See `docs/AUDIT.md`.
 | 503 | `database_unavailable` | The database did not answer the readiness check. |
 | 503 | `video_not_configured` | `VIDEO_PROVIDER` is not set, so no meeting can be created. |
 | 502 | `identity_provider_unavailable` | The identity provider could not be reached. |
+| 502 | `demo_simulator_unavailable` | The Google Meet simulator did not answer. Only `/demo/meet-outage` answers it, and only with `DEMO_MODE=1`. |

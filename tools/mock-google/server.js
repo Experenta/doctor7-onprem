@@ -13,6 +13,12 @@
 // Environment:
 //   MOCK_GOOGLE_PUBLIC_KEY_FILE  required, PEM file with the test public key
 //   MOCK_GOOGLE_PORT             optional, listen port, default 4020
+//   MOCK_GOOGLE_CONTROL_SECRET   optional, turns on the demo control endpoint (see below)
+//
+// Demo control (K-36). With a control secret, GET and POST /control/mode read and set `mode`.
+// It accepts a peer on loopback only, a request without X-Forwarded-For or Forwarded, and the
+// header x-demo-control-secret. POST takes {"mode":"ok"} or {"mode":"http_500"}. Without a
+// secret the paths answer 404, like any other unknown path. The secret is never logged.
 //
 // `mode` drives the answer of the Meet endpoint and the token endpoint:
 //   ok                 token and space are created.
@@ -31,6 +37,20 @@ const MAX_BODY_BYTES = 16 * 1024;
 const SPACE_SCOPE = 'https://www.googleapis.com/auth/meetings.space.created';
 const MODES = Object.freeze(['ok', 'http_400', 'http_500', 'quota', 'hang', 'no_uri', 'delegation_denied']);
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
+// The only modes the demo control may set.
+const CONTROL_MODES = Object.freeze(['ok', 'http_500']);
+const CONTROL_PATH = '/control/mode';
+const CONTROL_HEADER = 'x-demo-control-secret';
+const LOOPBACK_PEERS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(String(value)).digest();
+}
+
+// Compares two secrets in constant time, whatever their length.
+function sameSecret(given, expected) {
+  return crypto.timingSafeEqual(sha256(given), sha256(expected)) && typeof given === 'string';
+}
 
 function send(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -85,9 +105,13 @@ function createMockGoogle({
   serviceAccountEmail = 'meet-sa@doctor7-test.example.test',
   delegatedUsers = ['clinic.organizer@example.test'],
   now = () => new Date(),
+  controlSecret,
 } = {}) {
   if (typeof publicKeyPem !== 'string' || publicKeyPem.length === 0) {
     throw new TypeError('createMockGoogle requires publicKeyPem.');
+  }
+  if (controlSecret !== undefined && (typeof controlSecret !== 'string' || controlSecret.length < 16)) {
+    throw new TypeError('controlSecret must be a string of at least 16 characters.');
   }
   const accessTokens = new Set();
   let server = null;
@@ -193,9 +217,38 @@ function createMockGoogle({
     return answer(req, res, path, 200, space);
   }
 
+  // Demo control. Every refusal is recorded with method, path, and status only.
+  async function handleControl(req, res, path) {
+    if (!LOOPBACK_PEERS.has(req.socket.remoteAddress) || req.headers['x-forwarded-for'] !== undefined || req.headers.forwarded !== undefined) {
+      return answer(req, res, path, 403, { error: { code: 403, status: 'PERMISSION_DENIED' } });
+    }
+    if (!sameSecret(req.headers[CONTROL_HEADER], controlSecret)) {
+      return answer(req, res, path, 401, { error: { code: 401, status: 'UNAUTHENTICATED' } });
+    }
+    if (req.method === 'GET') {
+      return answer(req, res, path, 200, { mode: google.mode });
+    }
+    if (req.method !== 'POST') {
+      return answer(req, res, path, 405, { error: { code: 405, status: 'METHOD_NOT_ALLOWED' } });
+    }
+    let mode;
+    try {
+      mode = JSON.parse(await readBody(req)).mode;
+    } catch {
+      mode = undefined;
+    }
+    if (typeof mode !== 'string' || !CONTROL_MODES.includes(mode)) {
+      return answer(req, res, path, 400, { error: { code: 400, status: 'INVALID_ARGUMENT' } });
+    }
+    google.mode = mode;
+    return answer(req, res, path, 200, { mode: google.mode });
+  }
+
   async function handle(req, res) {
     const path = new URL(req.url, google.issuer).pathname;
-    if (req.method === 'POST' && path === '/token') {
+    if (controlSecret !== undefined && path === CONTROL_PATH) {
+      await handleControl(req, res, path);
+    } else if (req.method === 'POST' && path === '/token') {
       await handleToken(req, res, path);
     } else if (req.method === 'POST' && path === '/v2/spaces') {
       await handleSpaces(req, res, path);
@@ -207,7 +260,7 @@ function createMockGoogle({
   return google;
 }
 
-module.exports = { createMockGoogle, MODES, SPACE_SCOPE };
+module.exports = { createMockGoogle, MODES, CONTROL_MODES, CONTROL_PATH, CONTROL_HEADER, SPACE_SCOPE };
 
 if (require.main === module) {
   const keyFile = process.env.MOCK_GOOGLE_PUBLIC_KEY_FILE;
@@ -215,7 +268,10 @@ if (require.main === module) {
     process.stderr.write('Set MOCK_GOOGLE_PUBLIC_KEY_FILE to the PEM file of the test public key.\n');
     process.exit(1);
   }
-  const google = createMockGoogle({ publicKeyPem: require('node:fs').readFileSync(keyFile, 'utf8') });
+  const google = createMockGoogle({
+    publicKeyPem: require('node:fs').readFileSync(keyFile, 'utf8'),
+    controlSecret: process.env.MOCK_GOOGLE_CONTROL_SECRET || undefined,
+  });
   google.start({ port: Number(process.env.MOCK_GOOGLE_PORT || 4020) }).then(
     () => process.stdout.write(`mock Google listening on ${google.issuer}\n`),
     (err) => {

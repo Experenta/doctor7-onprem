@@ -274,12 +274,23 @@ function scheduledResetClaims(text) {
   return sentences(text).filter((sentence) => RESET_WORD.test(sentence) && SCHEDULE_WORD.test(sentence));
 }
 
-test('neither the login page nor DEMO.md says that the data is reset on a schedule', async () => {
+test('the login page does not say that the data is reset on a schedule', async () => {
   await withIdp({ publicUrl: PUBLIC }, async (idp) => {
     const html = await (await fetch(`${idp.localUrl}/authorize?${authorizeParams()}`)).text();
     const visible = html.replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ');
     assert.deepEqual(scheduledResetClaims(visible), []);
   });
+});
+
+test('DEMO.md makes no unconditional scheduled-reset claim outside the Nightly reset section', () => {
   const demo = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'DEMO.md'), 'utf8');
-  assert.deepEqual(scheduledResetClaims(demo), []);
+  const start = demo.indexOf('## Nightly reset');
+  assert.ok(start > 0, 'the Nightly reset heading');
+  const next = demo.indexOf('\n## ', start + 1);
+  const nightly = demo.slice(start, next === -1 ? demo.length : next);
+  const rest = demo.slice(0, start) + (next === -1 ? '' : demo.slice(next));
+  assert.deepEqual(scheduledResetClaims(rest), []);
+  // The nightly section may describe the timer only with its caveats.
+  assert.match(nightly, /optional/i);
+  assert.match(nightly, /disabled by default/i);
 });

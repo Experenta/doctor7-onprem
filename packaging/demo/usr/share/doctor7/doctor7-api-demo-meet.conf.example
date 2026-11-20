@@ -1,0 +1,19 @@
+# doctor7-onprem demo: connects the API to the Google Meet simulator.
+#
+# Demo only. Do not install this on a production server.
+#
+# The package doctor7-demo generates /etc/doctor7/meet-demo-credentials.env on install. It
+# holds a synthetic service account key and the shared control secret, and it is read by
+# systemd as root. Nothing uses it until an administrator installs this drop-in on purpose:
+#
+#   install -D -m 0644 /usr/share/doctor7/doctor7-api-demo-meet.conf.example /etc/systemd/system/doctor7-api.service.d/demo-meet.conf
+#   systemctl daemon-reload
+#   systemctl enable --now doctor7-mock-google.service
+#   systemctl restart doctor7-api.service
+#
+# The file sets VIDEO_PROVIDER=meet, DEMO_MODE=1, and the simulator addresses. It is read
+# after /etc/doctor7/api.env, so its values win. JITSI_BASE_URL stays in api.env, because
+# Jitsi is the failover target. To undo it, delete the drop-in file, run
+# systemctl daemon-reload, and restart doctor7-api.service. See docs/DEMO.md.
+[Service]
+EnvironmentFile=/etc/doctor7/meet-demo-credentials.env

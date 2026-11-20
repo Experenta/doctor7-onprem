@@ -5,9 +5,12 @@ const { rateLimit } = require('express-rate-limit');
 const { createErrorHandler, notFound } = require('./http/errors');
 const { createHealthRouter } = require('./http/health');
 const { createAuth } = require('./auth');
-const { createAuthzGate } = require('./authz/gate');
+const { createAuthzGate, ROUTE_RULES } = require('./authz/gate');
 const { createCare } = require('./care');
 const { createAudit } = require('./audit');
+const { loadDemoConfig } = require('./demo/config');
+const { createMeetControl } = require('./demo/control');
+const { createDemoRouter, DEMO_ROUTE_RULES } = require('./demo/router');
 const { createVideo, loadVideoConfig } = require('./video');
 const { createMemoryMeetingStore } = require('./video/memoryStore');
 const { loadSecurityConfig } = require('./security/config');
@@ -32,7 +35,10 @@ const LOGIN_PATHS = ['/auth/login', '/auth/callback'];
 // When `config` is missing, the config is read from process.env, and
 // an invalid VIDEO_PROVIDER stops startup. `security` holds the result of
 // loadSecurityConfig (allowed origins, Jitsi origin, sign-in and write limits).
-// When it is missing, it is read from process.env.
+// When it is missing, it is read from process.env. `demo` holds `config`, the result of
+// loadDemoConfig, and optionally `fetchImpl`. The demo-only Meet outage switch (K-36) exists
+// only when that config is not null, which needs DEMO_MODE=1. Without it, the gate gets no rule
+// for the switch, no router is mounted, and no client for the simulator is created.
 function createApp({
   db,
   rateLimit: rateOptions = {},
@@ -42,6 +48,7 @@ function createApp({
   auditStore,
   video: videoOptions,
   security: securityOptions,
+  demo: demoOptions,
   logger = console,
 } = {}) {
   if (!db) {
@@ -86,7 +93,15 @@ function createApp({
     app.use(auth.router);
     // Everything after this point is protected. The gate answers 403 for any
     // route that has no rule, so a new route is closed until a rule opens it.
-    app.use(createAuthzGate({ requireSession: auth.requireSession, audit }));
+    // The demo switch gets its rules only when DEMO_MODE=1.
+    const demoConfig = demoOptions ? demoOptions.config : loadDemoConfig(process.env);
+    app.use(
+      createAuthzGate({
+        requireSession: auth.requireSession,
+        audit,
+        rules: demoConfig ? [...ROUTE_RULES, ...DEMO_ROUTE_RULES] : ROUTE_RULES,
+      })
+    );
     // State-changing requests are limited for each signed-in user.
     app.use(createWriteLimiter(security.writeLimit));
     app.use(createCare({ db, store: careStore, audit }).router);
@@ -99,8 +114,18 @@ function createApp({
         audit,
         config: (videoOptions && videoOptions.config) || loadVideoConfig(process.env),
         logger,
+        demoMode: Boolean(demoConfig),
       }).router
     );
+    // The demo-only Meet outage switch. Nothing is created without DEMO_MODE=1.
+    if (demoConfig) {
+      app.use(
+        createDemoRouter({
+          control: createMeetControl({ config: demoConfig, fetchImpl: demoOptions && demoOptions.fetchImpl }),
+          audit,
+        })
+      );
+    }
     // The audit router comes last. Its only route is GET /audit, which the gate admits for auditors.
     app.use(audit.router);
   }

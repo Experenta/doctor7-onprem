@@ -36,6 +36,9 @@ Each event writes one entry, except where a row says otherwise.
 | A read of an appointment or consultation is refused with 404 | `appointment.read` or `consultation.read` | `denied`, with reason | the requested type and id | see the center rule below |
 | A write is refused with 403 | the route action, such as `appointment.create` | `denied`, with reason | the type the route names | see the center rule below |
 | A request matches no route rule | `request.denied` | `denied`, reason `no_rule` | `route`, no id | none |
+| The administrator turns the demo Meet outage on (only with `DEMO_MODE=1`) | `demo.meet_outage_on` | `success`, or `failure` with reason `simulator_unreachable` | `demo`, no id | the administrator's center |
+| The administrator turns the demo Meet outage off (only with `DEMO_MODE=1`) | `demo.meet_outage_off` | `success`, or `failure` with reason `simulator_unreachable` | `demo`, no id | the administrator's center |
+| The demo switch is refused (only with `DEMO_MODE=1`) | `demo.read` or `demo.update` | `denied`, reason `role_not_allowed` or `no_center` | `demo`, no id | the caller's center |
 | `GET /audit` is refused | `audit.read` | `denied`, with reason | `audit`, no id | the caller's center |
 
 Successful appointment reads are not logged. Successful consultation reads and successful
@@ -47,6 +50,11 @@ later for administration must write its entries here.
 
 A request refused with 401 (no live session) and a request refused with 415 (a
 body that is not `application/json`) write no entry.
+
+The two demo entries hold the action, the actor, the center, the target type `demo`, and the
+outcome. They hold no request body and no secret. A successful read of the switch state is not
+logged. Without `DEMO_MODE=1` the API has no demo route, so no `demo.*` entry exists, and a request
+to the path is logged as `request.denied` with reason `no_rule`.
 
 ### Center rule
 
@@ -64,7 +72,7 @@ A caller from another center does not see it.
 | `actor_id` | The signed-in user who made the request. `NULL` when no user was signed in, for example a failed sign-in or a request with no route rule. |
 | `center_id` | The center the entry belongs to. `NULL` when no center is known. |
 | `action` | What was attempted, such as `consultation.read`. |
-| `target_type` | The kind of record: `consultation`, `appointment`, `user`, `session`, `route`, `audit`, or `chat`. |
+| `target_type` | The kind of record: `consultation`, `appointment`, `user`, `session`, `route`, `demo`, `audit`, or `chat`. |
 | `target_id` | The id of the record. `NULL` when the record is not known. |
 | `outcome` | `success`, `denied` (refused by the authorization rules), or `failure` (the action did not complete). |
 | `reason` | Internal code for a `denied` or `failure` entry. Never sent to the caller. |
@@ -88,6 +96,7 @@ A caller from another center does not see it.
 | `appointment_closed` | The appointment is not `scheduled`. A chat message or connection is refused, and a video meeting is not created. |
 | `not_configured` | `VIDEO_PROVIDER` is not set, so no meeting can be created. |
 | `meet_error`, `meet_timeout`, `meet_quota` | Google Meet failed, hit its time limit, or hit its quota. The meeting moves to Jitsi. |
+| `simulator_unreachable` | The demo switch could not reach the Google Meet simulator, or the simulator refused the shared secret. The outage was not changed. |
 | `user_not_found` | The verified email has no `users` row. |
 | `no_session` | A logout named no live session. |
 | `state_unknown`, `attempt_expired`, `binding_mismatch`, `invalid_request`, `provider_returned_error` | The sign-in callback refused the request. |
@@ -132,6 +141,7 @@ Limits of this control:
   change or drop `audit_log`. Keep it separate from the application account.
 - A database administrator can always change the table. Protecting against an
   administrator needs a copy of the log outside the server. That is not built.
+- The nightly reset of the demo (`docs/DEMO.md`) does not delete the audit log, so the log of the demo keeps growing.
 
 ## Failures
 

@@ -20,7 +20,7 @@ of the service, never in this repository.
 |---|---|
 | `doctor7-api` | API code with production dependencies, `doctor7-api.service`, the chat purge service and timer, backup and restore commands, the `doctor7` service user. |
 | `doctor7-web` | Static files of the web application and the Apache virtual host. |
-| `doctor7-demo` | Demo only. Mock identity provider, its unit, and the `/idp/` fragment of the virtual host. Not in `all`. See the Demo package section. |
+| `doctor7-demo` | Demo only. Mock identity provider, its unit, the `/idp/` fragment of the virtual host, the Google Meet simulator with its unit, and the nightly reset of the demo database with its service and timer. Not in `all`. See the Demo package section. |
 
 | Path | Content |
 |---|---|
@@ -114,6 +114,7 @@ never overwrites it.
 | `/etc/doctor7/backup.conf` | local value | `doctor7-api` | postinst, from `backup.conf.example`, when missing | Not touched. |
 | `/etc/doctor7/backup.cnf` | local value | none | the administrator, from `backup.cnf.example` | Not touched. It holds the database password. |
 | `/etc/doctor7/idp-demo.env` | local value | `doctor7-demo` | postinst, from `idp-demo.env.example`, when missing | Not touched. |
+| `/etc/doctor7/demo-reset.env` | local value | `doctor7-demo` | postinst, from `demo-reset.env.example`, when missing | Not touched. It holds the database credential of the reset once filled in. |
 | `/etc/doctor7/vhost-demo.conf` | package file, not a conffile | `doctor7-demo` | the package | Replaced on each install. It holds no value, so no local edit is kept. |
 | `/usr/share/doctor7/*.example` | package file | all | the package | Replaced on each install. They are templates. |
 
@@ -247,6 +248,21 @@ The video settings are described in `docs/VIDEO.md`. Only the names are listed h
 | Variable | Required | Meaning |
 |---|---|---|
 | `CHAT_RETENTION_DAYS` | No | Days a chat message is kept, from 1 to 3650. Default 90. The server checks it at startup, and so does the purge command. |
+
+### Demo mode (demo host only)
+
+Never set these on a production server. Without `DEMO_MODE`, the API has no demo route, no gate
+rule for one, and no client for the simulator. `docs/DEMO.md` describes the switch these settings
+turn on. The package `doctor7-demo` generates them (see the Demo package section).
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `DEMO_MODE` | No | `1` turns on the demo-only Meet outage switch. Unset, empty, and `0` mean off. Any other value stops the server at startup. |
+| `DEMO_MEET_CONTROL_URL` | With `DEMO_MODE=1` | Address of the Google Meet simulator control endpoint, `http` on a loopback host with no path, such as `http://127.0.0.1:4020`. Any other address stops the server at startup. |
+| `DEMO_MEET_CONTROL_SECRET` | With `DEMO_MODE=1` | Secret shared with the simulator, 32 to 256 printable characters without spaces. The simulator reads the same value as `MOCK_GOOGLE_CONTROL_SECRET`. It is generated on the host and is never in the repository. |
+
+On the demo host the simulator also uses `MOCK_GOOGLE_CONTROL_SECRET`, `MOCK_GOOGLE_PUBLIC_KEY_FILE`,
+`MOCK_GOOGLE_PORT` (fixed at 4020 in the unit), and `NODE_BIN`, all in `/etc/doctor7/mock-google.env`.
 
 ## Startup
 
@@ -422,3 +438,59 @@ describes the whole demo.
 - `apt-get remove` stops and disables the unit and keeps the settings file.
   `apt-get purge` removes `/etc/doctor7/idp-demo.env`, and removes `/etc/doctor7`
   only when it is empty. It keeps the `doctor7-idp` user and every other file.
+
+### Google Meet simulator (demo only)
+
+The same package holds a simulator of the two Google endpoints that the API calls to create a Meet
+meeting. It lets the demo show the failover from Meet to Jitsi. `docs/DEMO.md` explains how it is
+used. The package also depends on `openssl`.
+
+- It installs `/usr/lib/doctor7/mock-google/server.js`, `/usr/lib/doctor7/start-google.sh`, and the
+  unit `doctor7-mock-google.service`. The unit runs as the system user `doctor7-meet` (created when
+  missing), listens on `127.0.0.1:4020` only, and has the same hardening as the identity provider unit,
+  plus `IPAddressDeny=any` with `IPAddressAllow=localhost`. It is not enabled or started by the install.
+- The install generates, only when none of these files exists yet, a synthetic RSA key pair and a shared
+  secret on the host with `openssl`. The key never leaves the host and is never in the package:
+
+  | File | Mode and owner | Content |
+  |---|---|---|
+  | `/etc/doctor7/mock-google.env` | 0640, `root:doctor7-meet` | `MOCK_GOOGLE_CONTROL_SECRET` and the path of the public key. |
+  | `/etc/doctor7/meet-demo-public-key.pem` | 0640, `root:doctor7-meet` | The public key that the simulator uses to check the assertion. |
+  | `/etc/doctor7/meet-demo-credentials.env` | 0640, `root:doctor7` | The API settings of the demo: `VIDEO_PROVIDER=meet`, `DEMO_MODE=1`, the simulator addresses, the secret, and the synthetic service account key. |
+
+  These are local values like `idp-demo.env`: an upgrade never replaces them. If some of the three files
+  exist and others do not, the install generates nothing and says so.
+- Nothing reads `meet-demo-credentials.env` until an administrator installs the drop-in
+  `/usr/share/doctor7/doctor7-api-demo-meet.conf.example` into
+  `/etc/systemd/system/doctor7-api.service.d/`. `docs/DEMO.md` lists the commands.
+- `apt-get remove` stops and disables the simulator unit. `apt-get purge` also removes the three generated
+  files. It keeps the `doctor7-meet` user.
+
+### Nightly reset of the demo database (demo only)
+
+The same package holds a reset that erases the rows that visitors create in the demo database and loads
+the synthetic seed again. It deletes from every table except the audit log and the migration table. The
+audit log is append-only and is never deleted from. `docs/DEMO.md`, section "Nightly reset", explains what
+is reset, the safeguards, and how to turn it on and off.
+
+- It installs `/usr/lib/doctor7/seed/` (the reset and the seed code that it needs), `/usr/lib/doctor7/start-reset.sh`,
+  the service `doctor7-demo-reset.service` (oneshot), and the timer `doctor7-demo-reset.timer`. The timer runs
+  the service every day at 04:00 America/Bogota, with `Persistent=false`. The package does not enable or
+  start either one. On the demo host, run `systemctl enable --now doctor7-demo-reset.timer`. To stop it, run
+  `systemctl disable --now doctor7-demo-reset.timer`.
+- The service runs as the system user `doctor7-reset` (created when missing), with the hardening of the identity
+  provider unit. It uses the Node.js lookup of `doctor7-api`, and it reads `mysql2` from `/usr/lib/doctor7/node_modules`.
+- Settings: `/etc/doctor7/demo-reset.env`, mode 0640, group `doctor7-reset`, created from a template with names only.
+  An upgrade never replaces it. `apt-get purge` removes it.
+
+  | Variable | Meaning |
+  |---|---|
+  | `DEMO_MODE` | Must be exactly `1`, or the reset refuses to run. |
+  | `DEMO_RESET_CONFIRM` | Must be exactly `erase-demo-data`, or the reset refuses to run. It is set in this file only. |
+  | `DEMO_RESET_DATABASE_URL` | Address of a database account that may `SELECT`, `INSERT`, and `DELETE` in the demo database. It is not the API account, and the reset never reads `DATABASE_URL`. It holds a password. |
+  | `NODE_BIN` | Optional. A Node.js 22 or later, when none is at `/opt/node/current/bin/node` or in `PATH`. |
+
+- The reset also refuses when the database name does not end in `_demo`. A production database must not have
+  that suffix, and the package must not be installed on a production server.
+- `apt-get remove` stops and disables the timer and the service. The install and an upgrade never start the service,
+  because a run erases data.

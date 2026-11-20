@@ -88,10 +88,22 @@ every rule is scoped to a center. Nobody crosses centers, whatever the effect.
 | auditor | meeting | read | none |
 | auditor | meeting | create | none |
 | auditor | meeting | update | none |
+| professional | demo | read | none |
+| professional | demo | create | none |
+| professional | demo | update | none |
+| client | demo | read | none |
+| client | demo | create | none |
+| client | demo | update | none |
+| admin | demo | read | center |
+| admin | demo | create | none |
+| admin | demo | update | center |
+| auditor | demo | read | none |
+| auditor | demo | create | none |
+| auditor | demo | update | none |
 
 The test `api/src/authz/policy.test.js` holds a hand-written copy of this table.
 It checks every row against `can()` (an allowed and a denied case for each
-effect), checks that this file lists the same 48 rows, and fails if either
+effect), checks that this file lists the same 60 rows, and fails if either
 differs from `MATRIX` in `policy.js`. A property test reads this table and checks,
 for any role, any participation in the appointment, and any pair of centers, that
 `can()` decides what the table says.
@@ -100,6 +112,14 @@ The `meeting` resource is the video meeting of an appointment. It takes its cent
 and participants from the appointment, like a consultation. The professional of the
 appointment reads and creates it, the client of the appointment reads it, and nobody
 else has a cell. An administrator can read the appointment, but not its meeting.
+
+The `demo` resource is the demo-only Meet outage switch (K-36). It has no record and
+no participants. Only an administrator of a center has cells, `read` and `update`, and
+the `center` effect only checks that the administrator has a center. The routes of
+this resource exist only when the API starts with `DEMO_MODE=1` (see the Routes
+table and `docs/DEMO.md`). Without `DEMO_MODE`, the gate holds no rule for them, so a
+request to their path answers `403` like any path without a rule, and the audit log
+records `no_rule`.
 
 ### Choices where the rules were silent
 
@@ -125,11 +145,19 @@ only with a decision from the product owner.
 | GET | `/consultations/:id` | consultation read | professional, client, admin |
 | POST | `/appointments/:id/meeting` | meeting create (the gate checks appointment update) | professional |
 | GET | `/appointments/:id/meeting` | meeting read | professional and client in the matrix. The gate admits every role. |
+| GET | `/demo/meet-outage` | demo read (only with `DEMO_MODE=1`) | admin in the matrix. The gate admits every role. |
+| POST | `/demo/meet-outage` | demo update (only with `DEMO_MODE=1`) | admin |
 
 The gate admits every role on `GET /appointments/:id/meeting` on purpose (the rule
 has `anyRole`). The handler checks the meeting with `can()`, so an administrator or an
 auditor gets the same `404` as a user who cannot read the appointment. A `403` there
 would tell them that a meeting route exists for that record.
+
+`GET /demo/meet-outage` follows the same pattern. The gate admits every role, and the
+handler answers `404` to a role without the `demo read` cell. `POST /demo/meet-outage`
+uses the matrix at the gate, so every role but `admin` gets `403`, and the refusal is
+audited as `demo.update` with reason `role_not_allowed`. An administrator without a
+center is refused by the handler with `403` (`POST`) or `404` (`GET`), reason `no_center`.
 
 Public routes are outside the gate: `/healthz`, `/readyz`, and the `/auth`
 routes. Any other path or method answers `403`, including `HEAD`, `OPTIONS`,

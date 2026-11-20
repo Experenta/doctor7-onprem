@@ -37,7 +37,7 @@ function meetingResource(appointment) {
 // Every refusal and every outcome writes an audit entry before the response.
 // `store` is the care store (appointments), `meetings` the meeting store.
 // `service` is null when VIDEO_PROVIDER is not set.
-function createVideoRouter({ store, meetings, audit, service, logger = console, now = () => new Date() }) {
+function createVideoRouter({ store, meetings, audit, service, logger = console, now = () => new Date(), demoMode = false }) {
   if (!audit) {
     throw new TypeError('createVideoRouter requires an audit sink.');
   }
@@ -55,12 +55,25 @@ function createVideoRouter({ store, meetings, audit, service, logger = console, 
     return error;
   }
 
+  // `fallback` comes from the configuration, not from the database: Jitsi created the meeting
+  // while the server is set to Meet. A meeting stored while the server used Jitsi has
+  // fallback false. Without a configured provider there is no failover to report.
+  // `simulated` is true only in the demo (DEMO_MODE=1), for a meeting stored with Meet, because
+  // the demo runs a simulator in place of Google. Production always answers false.
+  const isFallback = (provider) => Boolean(service) && service.selected === 'meet' && provider === 'jitsi';
+  const describe = (meeting) => ({
+    provider: meeting.provider,
+    url: meeting.url,
+    fallback: isFallback(meeting.provider),
+    simulated: demoMode === true && meeting.provider === 'meet',
+  });
+
   // Answers with a stored meeting. The audit entry is written first, because the
   // response carries the address.
   async function respondWithMeeting(req, res, known, meeting, status) {
     await record(req, { ...known, action: 'meeting.read', outcome: 'success' });
     res.set('Cache-Control', 'no-store');
-    res.status(status).json({ provider: meeting.provider, url: meeting.url });
+    res.status(status).json(describe(meeting));
   }
 
   // The provider comes from the configuration only. A client cannot choose it,
@@ -135,7 +148,7 @@ function createVideoRouter({ store, meetings, audit, service, logger = console, 
     await record(req, { ...known, action: `meeting.create_${created.provider}`, outcome: 'success' });
 
     res.set('Cache-Control', 'no-store');
-    res.status(201).json({ provider: created.provider, url: created.url });
+    res.status(201).json(describe(created));
   });
 
   // The professional and the client of the appointment read the stored meeting.

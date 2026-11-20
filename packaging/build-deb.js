@@ -7,7 +7,8 @@
 //                                    [--web-dist DIR] [--no-deps]
 //
 //   api|web|all   Package to build. Default: all. "all" does not include demo.
-//   demo          Demo package with the mock identity provider. Demo only, never
+//   demo          Demo package with the mock identity provider, the Google Meet
+//                 simulator, and the nightly reset of the demo database. Demo only, never
 //                 production. Build it on its own: node packaging/build-deb.js demo.
 //   --out DIR     Output directory. Default: packaging/build (git ignores it).
 //   --version V   Package version. See "Version" below.
@@ -46,6 +47,16 @@ const VERSION_PATTERN = /^[0-9][A-Za-z0-9.+~-]*$/;
 // A package installs only below these folders. A file anywhere else would land
 // at the root of the system.
 const PACKAGE_TOP_DIRS = ['DEBIAN', 'usr', 'etc'];
+// Files of seed/ that the demo package carries for the nightly reset, relative to seed/.
+const DEMO_SEED_FILES = [
+  'reset-demo.js',
+  'lib/reset.js',
+  'lib/loader.js',
+  'lib/mariadb-store.js',
+  'lib/collections.js',
+  'lib/generator.js',
+  'lib/instant.js',
+];
 
 class BuildError extends Error {
   constructor(message) {
@@ -154,6 +165,10 @@ function checkInputs({ root, packages, webDist, installDeps }) {
     missing(path.join(idp, 'server.js'), 'The mock identity provider is missing: restore tools/mock-idp/server.js.');
     missing(path.join(idp, 'rate-limit.js'), 'server.js requires tools/mock-idp/rate-limit.js, so restore it.');
     missing(path.join(root, 'packaging', 'apache', 'idp-demo.conf.example'), 'The demo vhost example is missing: restore packaging/apache/idp-demo.conf.example.');
+    missing(path.join(root, 'tools', 'mock-google', 'server.js'), 'The Google Meet simulator is missing: restore tools/mock-google/server.js.');
+    for (const rel of DEMO_SEED_FILES) {
+      missing(path.join(root, 'seed', rel), `The demo reset needs seed/${rel}: restore it.`);
+    }
   }
   return problems;
 }
@@ -363,6 +378,17 @@ function addDemoPayload({ root, tree }) {
     path.join(root, 'packaging', 'apache', 'idp-demo.conf.example'),
     path.join(tree, 'usr', 'share', 'doctor7', 'idp-demo.conf.example'),
   );
+  // The Google Meet simulator (K-36) is one file with no dependency. Its test and its
+  // test aid stay in the repository.
+  copyText(
+    path.join(root, 'tools', 'mock-google', 'server.js'),
+    path.join(tree, 'usr', 'lib', 'doctor7', 'mock-google', 'server.js'),
+  );
+  // The demo reset (K-37) and the seed code it loads with. It requires mysql2, which Node finds in
+  // /usr/lib/doctor7/node_modules, installed by doctor7-api. Tests and test aids stay out.
+  for (const rel of DEMO_SEED_FILES) {
+    copyText(path.join(root, 'seed', rel), path.join(tree, 'usr', 'lib', 'doctor7', 'seed', rel));
+  }
 }
 
 function copyText(from, to) {

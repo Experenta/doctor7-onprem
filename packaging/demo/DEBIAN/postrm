@@ -3,6 +3,10 @@ set -e
 
 ENV_FILE=/etc/doctor7/idp-demo.env
 ENV_DIR=/etc/doctor7
+MEET_ENV_FILE=/etc/doctor7/mock-google.env
+MEET_API_ENV_FILE=/etc/doctor7/meet-demo-credentials.env
+MEET_PUBLIC_KEY=/etc/doctor7/meet-demo-public-key.pem
+RESET_ENV_FILE=/etc/doctor7/demo-reset.env
 
 case "$1" in
   remove | upgrade | failed-upgrade | abort-install | abort-upgrade | disappear)
@@ -11,9 +15,11 @@ case "$1" in
     fi
     ;;
   purge)
-    # Remove only what this package created. The service user, the settings of
-    # other packages, and any directory that still holds files stay.
+    # Remove only what this package created. The service users, the settings of
+    # other packages, and any directory that still holds files stay. The generated
+    # simulator key and secret go with the purge.
     rm -f "$ENV_FILE"
+    rm -f "$MEET_ENV_FILE" "$MEET_API_ENV_FILE" "$MEET_PUBLIC_KEY" "$RESET_ENV_FILE"
     rmdir "$ENV_DIR" 2>/dev/null || true
     ;;
   *)

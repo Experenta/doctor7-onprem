@@ -15,8 +15,14 @@ checked. Each claim names its source. Three kinds of source appear:
   `git diff`, `git log`, `git grep`, `git add`, `git commit`, `node --test`, `npm test`,
   `npm run build`, `ls`, `dir`, and `pwd`. The agents had no cloud network access, could
   not install dependencies, and could not push. (Source: `KIRO-USO.md`, Agents and models.)
-- The tool role is written down in the project record. The folder `.kiro/agents/` in
-  this repository is empty.
+- The restricted role is in `.kiro/agents/implementer.json`. It is a cleaned English copy of
+  the role that the project manager's Kiro CLI runs used for the tasks. The original lives in
+  the project manager's private registry and also allows commands for other stacks (`pnpm`,
+  `npx jest`, `npx tsc --noEmit`, `python -m pytest`), so the command list in this repository
+  is a subset of it. The role was used with the Kiro CLI, not with the IDE. The copy in this
+  repository was accepted by the CLI (`kiro-cli agent validate`, exit code 0, 2026-11-19);
+  the tasks themselves ran with the original file. Apart from `ui-checker.json` (see MCP), no other agent file, hook, or MCP server
+  is claimed for this repository.
 - The models were Claude Haiku 5.5 and Claude Sonnet 5.5. Sonnet ran the sessions,
   authorization, security, frontend, and packaging tasks. Haiku ran the other tasks.
   Opus was not used. (Source: `KIRO-USO.md`, Agents and models.)
@@ -25,7 +31,7 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## Tasks, contracts, and checks
 
-- 34 tasks were given to Kiro agents: K-01 to K-34 except K-15 (an internal document kept outside this repository), plus K-19b, a follow-up to K-19. Each task had a
+- 39 tasks were given to Kiro agents: K-01 to K-38 except K-15 (an internal document kept outside this repository), plus K-19b and K-37b, follow-ups to K-19 and K-37. Each task had a
   written contract with an objective, the files it may change, what is out of scope, an
   acceptance criterion, and a verification command. (Source: `KIRO-USO.md`, Tasks.)
 - Each task had its own branch and one commit. The project director checked the task
@@ -37,11 +43,11 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## Specifications
 
-- From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, and K-27, which have none. A
+- From K-06 on, every task began with a specification in `.kiro/specs/<task>/`, except K-11, K-19b, K-25, K-27, and K-37b, which have none. A
   specification has three files: `requirements.md`, `design.md`, and `tasks.md`. The task
   was then implemented against that specification. (Source: `KIRO-USO.md`, Specifications;
   folder `.kiro/specs/`.)
-- The repository holds specifications for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, k-29, k-30, k-31, k-32, k-33, and k-34. There is no folder for K-11, K-15, K-25, and K-27. (Source: folder `.kiro/specs/`.)
+- The repository holds specifications for k-06, k-07, k-08, k-09, k-10, k-12, k-13, k-14, k-16, k-17, k-18, k-19, k-20, k-21, k-22, k-23, k-24, k-26, k-28, k-29, k-30, k-31, k-32, k-33, k-34, k-35, k-36, k-37, and k-38. There is no folder for K-11, K-15, K-19b, K-25, K-27, and K-37b. (Source: folder `.kiro/specs/`.)
 
 ## Steering
 
@@ -61,7 +67,7 @@ checked. Each claim names its source. Three kinds of source appear:
 
 ## MCP
 
-- No MCP server was used. (Source: `KIRO-USO.md`, MCP.)
+- MCP was used once, after the build, by the project manager with the director's authorization, to let a Kiro agent verify the deployed UI in a headless browser (`docs/UI-VERIFICATION.md`). It was not used to write the code. The agent is restricted to the demo origin and to an explicit tool list (`.kiro/agents/ui-checker.json`).
 
 ## Property-based tests
 

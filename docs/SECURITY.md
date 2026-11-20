@@ -34,6 +34,11 @@ is read and before the session check.
 The chat WebSocket handshake keeps its own check (the host of `Origin` must be
 the `Host`).
 
+The demo-only Meet outage switch (`/demo/meet-outage`, `docs/DEMO.md`) is not mounted unless the API
+starts with `DEMO_MODE=1`, so a production server has no route, no gate rule, and no client for the
+simulator. With it on, only an administrator can use it, and it speaks to the simulator over loopback
+with a shared secret that is kept in the settings file and never in the repository.
+
 ## Headers
 
 The API sends these on every response, including errors and the probes:

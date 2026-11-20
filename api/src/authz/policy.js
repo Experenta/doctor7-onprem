@@ -11,7 +11,7 @@
 // A cell that is missing means the action is denied.
 
 const ROLES = Object.freeze(['professional', 'client', 'admin', 'auditor']);
-const RESOURCES = Object.freeze(['appointment', 'consultation', 'audit', 'meeting']);
+const RESOURCES = Object.freeze(['appointment', 'consultation', 'audit', 'meeting', 'demo']);
 const ACTIONS = Object.freeze(['read', 'create', 'update']);
 
 const MATRIX = deepFreeze({
@@ -28,6 +28,8 @@ const MATRIX = deepFreeze({
   admin: {
     appointment: { read: 'center', create: 'center', update: 'center' },
     consultation: { read: 'center' },
+    // The demo-only Meet outage switch (K-36). Its routes exist only with DEMO_MODE=1.
+    demo: { read: 'center', update: 'center' },
   },
   auditor: {
     audit: { read: 'center' },

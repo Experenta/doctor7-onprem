@@ -9,8 +9,8 @@ The public demo lets a visitor sign in without a real account. The demo host run
 the mock provider behind Apache, under the path `/idp/`. The API checks the
 provider's tokens in the same way it does in production.
 
-The demo data is synthetic. The accounts and records are invented. A reset is
-manual: the Reset section describes it.
+The demo data is synthetic. The accounts and records are invented. The data returns to
+the seed by hand (the Reset section). An optional timer can do this on a schedule, and it is disabled by default.
 
 ## Accounts
 
@@ -138,8 +138,160 @@ routing rule, so a request to `/idp/` is not answered with `index.html`.
 ## Reset
 
 The provider keeps no state. Its codes and signing key live in memory, so a restart
-clears them. To reset the data, load a new seed into an empty database, as
-`docs/MIGRATION.md` describes.
+clears them. To reset the data by hand, load a new seed into an empty database, as
+`docs/MIGRATION.md` describes. A reset is manual unless the optional timer is enabled. For a scheduled run, see the optional timer in the next section.
+
+## Nightly reset
+
+**Demo only. This erases data. Never enable it on a production server.**
+
+The package `doctor7-demo` holds a reset that returns the demo database to the synthetic seed. The timer is
+optional and disabled by default: the package installs it disabled and stopped, and an administrator turns it on. The command is `seed/reset-demo.js`, installed as
+`/usr/lib/doctor7/seed/reset-demo.js`. The service `doctor7-demo-reset.service` (a oneshot) runs it
+as the system user `doctor7-reset`. The timer `doctor7-demo-reset.timer` starts the service every day
+at 04:00 America/Bogota. A run missed while the host was off is not made up.
+
+### What is reset, and what is not
+
+| Reset | Not reset |
+|---|---|
+| Appointments, video meetings, chat messages, and consultation records that visitors created. | The audit log (`audit_log`). It is append-only, so it is never deleted from, and it keeps growing. |
+| Sessions and sign-in attempts. Every visitor is signed out. | The migration table (`schema_migrations`). |
+| Users and centers, which the seed loads again with its fixed ids. | Any table whose name starts with `audit`. |
+| Every table added to the schema later (clients, records, forms, revisions, and so on). | The schema itself. The reset never drops or truncates a table. |
+
+The list of tables is read from the database (`information_schema`), not written in the script. A
+table added by a later migration is emptied with no change to the script. The seed is the one of
+`seed/generate.js`, built for the day of the run, so the appointments stay around the current date. The
+seed audit entries are not loaded again, because the audit rows stay.
+
+### Safeguards
+
+The script stops with exit code 1 and changes nothing unless all of these hold:
+
+1. `DEMO_MODE=1` is in its environment.
+2. `DEMO_RESET_CONFIRM=erase-demo-data` is in its environment. This value is set only in
+   `/etc/doctor7/demo-reset.env`, never by default.
+3. `DEMO_RESET_DATABASE_URL` is set. It is the address of a database account that is not the API
+   account. If it is missing, the script refuses. It never falls back to `DATABASE_URL`.
+4. The name of the database ends in `_demo`.
+5. The database has the table `schema_migrations`.
+
+It never deletes from `audit_log` or `schema_migrations`. Foreign key checks are off only around the
+delete transaction and are on again when it ends. It prints the name and the deleted row count of every
+table, the loaded row counts of every collection, and the audit and migration row counts before and
+after. It never prints the database address or a driver message. Exit code 2 means the reset finished
+but some seed rows were rejected.
+
+### Turn it on
+
+1. Create a database account for the reset, apart from the API account. It needs `SELECT`, `INSERT`,
+   and `DELETE` on the demo database, whose name ends in `_demo`. `information_schema` lists only the
+   tables that the account can see, so the grant covers the whole database. The script itself never
+   deletes from the audit log, but the account can, so give it to this script only.
+2. Edit `/etc/doctor7/demo-reset.env` (mode 0640, group `doctor7-reset`, created by the package from a
+   template with names only). Set `DEMO_MODE=1`, `DEMO_RESET_CONFIRM=erase-demo-data`, and
+   `DEMO_RESET_DATABASE_URL` to the address of that account. The address uses the TCP form, with a host
+   and the database name, such as `mysql://<user>:<password>@<db-host>/<name>_demo`.
+3. Try it once: `sudo systemctl start doctor7-demo-reset.service`, then
+   `journalctl -u doctor7-demo-reset.service`.
+4. Turn on the timer: `sudo systemctl enable --now doctor7-demo-reset.timer`. Check it with
+   `systemctl list-timers doctor7-demo-reset.timer`.
+
+### Turn it off
+
+`sudo systemctl disable --now doctor7-demo-reset.timer`. Remove `DEMO_RESET_CONFIRM` from
+`/etc/doctor7/demo-reset.env` as well, so that nobody starts the service by hand by mistake.
+`apt-get remove doctor7-demo` stops and disables the timer. `apt-get purge` also removes the settings
+file.
+
+Not verified in this repository: a run against a real MariaDB (the integration test needs
+`DATABASE_URL` and is skipped without it), the behavior of the units under systemd, and the install on
+the demo host.
+
+## Demo-only Meet outage switch
+
+The demo shows what the API does when Google Meet fails: it creates the meeting in Jitsi and says
+so. Real Google is not used in the demo. A simulator stands in for it, and an administrator can make
+the simulator fail with one switch.
+
+**This switch does not exist in production.** The API mounts its routes, and adds their gate rules,
+only when it starts with `DEMO_MODE=1`. A production server does not set `DEMO_MODE`. Then the path
+`/demo/meet-outage` has no rule, so the gate answers it like every other unknown path (`403`, audited
+as `no_rule`), the API holds no client for the simulator, and it never contacts it. Tests cover both
+cases (`api/src/demo/meetOutage.http.test.js`).
+
+### What it is
+
+- The simulator is `tools/mock-google/server.js`. It answers the token endpoint and the Meet
+  `spaces` endpoint of Google on `127.0.0.1:4020` only. It checks the signature of the assertion with
+  a public key. Its `mode` is `ok` or, during the outage, `http_500`.
+- `POST /demo/meet-outage` with `{"meetOutage": true}` or `{"meetOutage": false}` switches the mode.
+  Only the role `admin` can call it. The change is written to the audit log as `demo.meet_outage_on` or
+  `demo.meet_outage_off`, with the author and the result and without a body or a secret.
+- The API talks to the simulator over loopback with a secret that both sides read from their settings
+  files (`DEMO_MEET_CONTROL_SECRET` and `MOCK_GOOGLE_CONTROL_SECRET`). The simulator accepts control
+  only from a loopback peer with that secret, and only the modes `ok` and `http_500`.
+- A meeting that already exists is never moved. The outage changes the next meeting that a professional
+  starts.
+
+### How to turn it on
+
+Do this on the demo host, after the install of `doctor7-demo` (see "Install with the package"). The
+install already generated a synthetic key pair and the shared secret with `openssl`, in
+`/etc/doctor7/mock-google.env`, `/etc/doctor7/meet-demo-public-key.pem`, and
+`/etc/doctor7/meet-demo-credentials.env`. None of them is in the repository or in the package.
+
+1. `JITSI_BASE_URL` stays in `/etc/doctor7/api.env`, because Jitsi is the failover target.
+2. Install the drop-in that makes the API read the generated settings (they set `VIDEO_PROVIDER=meet`,
+   `DEMO_MODE=1`, the simulator addresses, the secret, and the synthetic credential):
+
+   ```sh
+   sudo install -D -m 0644 /usr/share/doctor7/doctor7-api-demo-meet.conf.example /etc/systemd/system/doctor7-api.service.d/demo-meet.conf
+   sudo systemctl daemon-reload
+   ```
+
+3. Start the simulator, then restart the API:
+
+   ```sh
+   sudo systemctl enable --now doctor7-mock-google.service
+   sudo systemctl restart doctor7-api.service
+   ```
+
+The settings are these (names and the fixed demo values; the secret and the key are generated):
+
+| Variable | Where | Value |
+|---|---|---|
+| `VIDEO_PROVIDER` | `meet-demo-credentials.env` | `meet` |
+| `DEMO_MODE` | `meet-demo-credentials.env` | `1` |
+| `GOOGLE_MEET_API_BASE_URL` | `meet-demo-credentials.env` | `http://127.0.0.1:4020` |
+| `GOOGLE_MEET_DELEGATED_USER` | `meet-demo-credentials.env` | `clinic.organizer@example.test` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | `meet-demo-credentials.env` | Synthetic service account, `token_uri` `http://127.0.0.1:4020/token` |
+| `DEMO_MEET_CONTROL_URL` | `meet-demo-credentials.env` | `http://127.0.0.1:4020` |
+| `DEMO_MEET_CONTROL_SECRET` | `meet-demo-credentials.env` | Generated on the host |
+| `MOCK_GOOGLE_CONTROL_SECRET` | `mock-google.env` | The same generated value |
+| `MOCK_GOOGLE_PUBLIC_KEY_FILE` | `mock-google.env` | `/etc/doctor7/meet-demo-public-key.pem` |
+
+To turn it off for good, delete `/etc/systemd/system/doctor7-api.service.d/demo-meet.conf`, run
+`systemctl daemon-reload`, restart `doctor7-api.service`, and disable `doctor7-mock-google.service`.
+
+### How to use it in the demo
+
+1. Sign in as the Administrator. The Home screen shows the card "Demo only: simulate a Google Meet
+   outage". It appears only when the API answers `GET /demo/meet-outage`. On a server without
+   `DEMO_MODE` the answer is an error, and the screen shows nothing.
+2. Start a meeting as the Professional on any scheduled appointment, with the outage off. The
+   appointment shows the chip "Google Meet (simulated)" and a link that opens in a new tab. The address
+   is made up by the simulator, so the page that it opens on `meet.google.com` is not a real room.
+3. As the Administrator, turn the switch on. The card says "Outage turned on". Then, as the Professional,
+   open another scheduled appointment and start its meeting. Google Meet does not answer, so the API
+   creates the meeting in Jitsi. The appointment shows the chip "Jitsi (fallback)", the notice "Google
+   Meet was not available, so this meeting was created in Jitsi.", and the Jitsi room in the page. The
+   audit log has `meeting.failover` and `meeting.create_jitsi`.
+4. Turn the switch off to go back to Google Meet.
+
+Not verified in this repository: the install on a Debian host (`openssl` key generation, file modes,
+the drop-in), the behavior of the units under systemd, and the screens in a real browser.
 
 ## Not covered by this demo
 

@@ -26,7 +26,7 @@ test('the control file names the demo package, its dependencies, and its limit',
   assert.equal(fields.Package, 'doctor7-demo');
   assert.equal(fields.Version, '@VERSION@');
   assert.equal(fields.Architecture, 'all');
-  assert.equal(fields.Depends, 'doctor7-api, adduser, systemd');
+  assert.equal(fields.Depends, 'doctor7-api, adduser, systemd, openssl');
   assert.doesNotMatch(fields.Depends, /\bnodejs\b|\bnpm\b/);
   assert.match(fields.Description, /demo only/i);
   assert.match(fields.Description, /never production/i);
@@ -78,7 +78,8 @@ test('postrm purge removes only the settings file this package wrote', () => {
   const purge = postrm.slice(postrm.indexOf('purge)'), postrm.indexOf(';;', postrm.indexOf('purge)')));
   assert.match(purge, /rm -f "\$ENV_FILE"/);
   assert.match(purge, /rmdir "\$ENV_DIR" 2>\/dev\/null/);
-  assert.equal((postrm.match(/\brm\b/g) || []).length, 1, 'the only rm is the settings file');
+  assert.equal((postrm.match(/\brm\b/g) || []).length, 2, 'the only rm commands are the provider settings file and the generated simulator files');
+  assert.match(purge, /rm -f "\$MEET_ENV_FILE" "\$MEET_API_ENV_FILE" "\$MEET_PUBLIC_KEY"/);
   assert.doesNotMatch(postrm, /rm -r|deluser|delgroup|userdel|api\.env|backup\.conf|\/var\/lib/);
 });
 
